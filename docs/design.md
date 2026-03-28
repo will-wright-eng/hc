@@ -14,12 +14,8 @@ This is based on Adam Tornhill's churn × complexity methodology, designed as a 
 hc analyze [path]                     # hotspot matrix (default: current directory)
 hc analyze --since "6 months"         # restrict churn window
 hc analyze --by-dir                   # directory-level rollup
-hc analyze --authors                  # include author concentration
 hc analyze --format json|csv|table    # output format (default: table)
 hc analyze --top N                    # limit to top N results
-
-hc coupling [path]                    # change coupling analysis (stretch goal)
-hc coupling --min-coupling 0.5        # minimum coupling threshold
 ```
 
 ### Framework
@@ -37,7 +33,7 @@ urfave/cli v3 — declarative struct-based CLI with zero external dependencies. 
 type FileChurn struct {
     Path    string
     Commits int
-    Authors int    // unique contributors (optional, with --authors)
+    Authors int    // unique contributors
 }
 
 // FileComplexity represents static analysis for a single file.
@@ -81,13 +77,13 @@ The hotspot matrix from the reference document:
 
 ```
                     LOW CHURN              HIGH CHURN
-                ┌──────────────────┬──────────────────────┐
-HIGH COMPLEXITY │  Cold Complex     │  Hot Critical         │
-                │  Stable liability │  Refactor target      │
-                ├──────────────────┼──────────────────────┤
-LOW COMPLEXITY  │  Cold Simple      │  Hot Simple           │
-                │  Leave alone      │  Monitor for growth   │
-                └──────────────────┴──────────────────────┘
+                ┌───────────────────┬──────────────────────┐
+HIGH COMPLEXITY │  Cold Complex     │  Hot Critical        │
+                │  Stable liability │  Refactor target     │
+                ├───────────────────┼──────────────────────┤
+LOW COMPLEXITY  │  Cold Simple      │  Hot Simple          │
+                │  Leave alone      │  Monitor for growth  │
+                └───────────────────┴──────────────────────┘
 ```
 
 **Default threshold: median split.** Files above the median churn are "hot"; files above the median complexity are "complex". This adapts to any repository without requiring user configuration.
@@ -134,19 +130,19 @@ sort by quadrant priority (HotCritical first), then by commit count
 - Default window: all history
 - Configurable via `--since` (passed directly to git)
 - Counts commits per file path
-- Optional: unique author count per file (`--authors`)
+- Counts unique authors per file
 
 ### Complexity Measurement
 
 - Default: lines of code (LOC), counted by reading files directly
 - Excludes blank lines and comment-only lines where practical
-- Future: optional `--complexity-cmd` flag to plug in external tools (scc, lizard, gocyclo)
 
 ### Threshold Strategy
 
 - **Default (median):** above-median churn = hot, above-median LOC = complex
-- **Percentile flag:** `--churn-threshold p75` or `--complexity-threshold p90`
-- **Absolute flag:** `--min-commits 10 --min-lines 500`
+  - Churn threshold: p50 of commit counts across all analyzed files
+  - Complexity threshold: p50 of LOC across all analyzed files
+  - Files at or below the median are classified as "low"; above as "high"
 
 ---
 
@@ -192,6 +188,9 @@ Listed in rough priority order:
 3. **Complexity beyond LOC** — integrate cyclomatic complexity via external tools or built-in AST analysis for supported languages
 4. **Weighted recency** — weight recent commits higher than old ones in the churn calculation (exponential decay)
 5. **Ignore patterns** — `--ignore` flag or `.hcignore` file to exclude vendor, generated, or test files
+6. **Optional Flags** — `--complexity-cmd` flag to plug in external tools (scc, lizard, gocyclo)
+7. **Optional Flags** — percentile and absolute threshold flags (e.g. `--churn-threshold`, `--complexity-threshold`)
+8. **Deleted file handling** — files that appear in git history but no longer exist on disk are excluded from analysis
 
 ---
 
