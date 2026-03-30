@@ -11,6 +11,7 @@ The ecosystem is fragmented. Most tools in this space were built between 2015–
 ## All-in-One Tools
 
 ### code-maat
+
 - **Repo:** github.com/adamtornhill/code-maat
 - **Analyses:** Churn, change coupling, author analysis. Complexity requires piping in output from an external tool (e.g., lizard).
 - **Language agnostic:** Yes — operates on git log output, not source code.
@@ -18,6 +19,7 @@ The ecosystem is fragmented. Most tools in this space were built between 2015–
 - **Status:** Unmaintained since ~2020. ~2,000 stars. Still the reference implementation of Tornhill's behavioral code analysis methodology.
 
 ### code-forensics
+
 - **Repo:** github.com/smontanari/code-forensics
 - **Analyses:** Churn, change coupling, hotspot analysis (churn × complexity). Best-in-class interactive browser visualizations.
 - **Language agnostic:** Mostly — churn and coupling are VCS-based; complexity requires an external tool.
@@ -25,6 +27,7 @@ The ecosystem is fragmented. Most tools in this space were built between 2015–
 - **Status:** Dormant since ~2019. ~400 stars.
 
 ### charlie-git
+
 - **Package:** npmjs.com/package/charlie-git
 - **Analyses:** Churn, complexity (indentation-based heuristic), change coupling, hotspot scoring. All three in one tool.
 - **Language agnostic:** Yes — indentation-based complexity works on any language.
@@ -32,6 +35,7 @@ The ecosystem is fragmented. Most tools in this space were built between 2015–
 - **Status:** Active as of 2024/2025. Most self-contained option available.
 
 ### Emerge
+
 - **Repo:** github.com/glato/emerge
 - **Analyses:** Churn, complexity, structural dependency graphs, change coupling (experimental).
 - **Language agnostic:** Broad multi-language support; git metrics are language-agnostic.
