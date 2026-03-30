@@ -11,14 +11,14 @@ import (
 
 func sampleScores() []analysis.FileScore {
 	return []analysis.FileScore{
-		{Path: "src/parser.go", Commits: 87, Lines: 1240, Authors: 6, Quadrant: analysis.HotCritical},
-		{Path: "src/handlers.go", Commits: 45, Lines: 120, Authors: 3, Quadrant: analysis.HotSimple},
+		{Path: "src/parser.go", Commits: 87, Lines: 1240, Complexity: 1240, Authors: 6, Quadrant: analysis.HotCritical},
+		{Path: "src/handlers.go", Commits: 45, Lines: 120, Complexity: 120, Authors: 3, Quadrant: analysis.HotSimple},
 	}
 }
 
 func TestFormatFilesTable(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "table")
+	err := FormatFiles(&buf, sampleScores(), "table", "loc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestFormatFilesTable(t *testing.T) {
 
 func TestFormatFilesJSON(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "json")
+	err := FormatFiles(&buf, sampleScores(), "json", "loc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestFormatFilesJSON(t *testing.T) {
 
 func TestFormatFilesCSV(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "csv")
+	err := FormatFiles(&buf, sampleScores(), "csv", "loc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,10 +70,10 @@ func TestFormatFilesCSV(t *testing.T) {
 
 func TestFormatDirsTable(t *testing.T) {
 	dirs := []analysis.DirScore{
-		{Path: "src", Files: 5, TotalCommits: 100, TotalLines: 2000, Quadrant: analysis.HotCritical},
+		{Path: "src", Files: 5, TotalCommits: 100, TotalLines: 2000, TotalComplexity: 2000, Quadrant: analysis.HotCritical},
 	}
 	var buf bytes.Buffer
-	err := FormatDirs(&buf, dirs, "table")
+	err := FormatDirs(&buf, dirs, "table", "loc")
 	if err != nil {
 		t.Fatal(err)
 	}

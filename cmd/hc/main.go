@@ -40,6 +40,11 @@ func main() {
 						Name:  "top",
 						Usage: "Limit to top N results",
 					},
+					&cli.StringFlag{
+						Name:  "complexity-metric",
+						Usage: "Complexity metric: loc, indentation",
+						Value: "loc",
+					},
 				},
 				Action: runAnalyze,
 			},
@@ -67,13 +72,14 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	format := cmd.String("format")
 	byDir := cmd.Bool("by-dir")
 	top := cmd.Int("top")
+	metric := cmd.String("complexity-metric")
 
 	churns, err := gitpkg.Log(absPath, since)
 	if err != nil {
 		return fmt.Errorf("reading git history: %w", err)
 	}
 
-	complexities, err := complexity.Walk(absPath)
+	complexities, err := complexity.Walk(absPath, metric)
 	if err != nil {
 		return fmt.Errorf("analyzing file complexity: %w", err)
 	}
@@ -85,11 +91,11 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		if top > 0 && int(top) < len(dirs) {
 			dirs = dirs[:int(top)]
 		}
-		return output.FormatDirs(os.Stdout, dirs, format)
+		return output.FormatDirs(os.Stdout, dirs, format, metric)
 	}
 
 	if top > 0 && int(top) < len(scores) {
 		scores = scores[:int(top)]
 	}
-	return output.FormatFiles(os.Stdout, scores, format)
+	return output.FormatFiles(os.Stdout, scores, format, metric)
 }

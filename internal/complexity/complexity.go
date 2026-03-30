@@ -9,13 +9,16 @@ import (
 
 // FileComplexity represents static analysis for a single file.
 type FileComplexity struct {
-	Path  string
-	Lines int
+	Path       string
+	Lines      int
+	Complexity int // indent sum when metric=indentation, same as Lines when metric=loc
 }
 
 // Walk traverses the file tree at root and counts non-blank, non-comment lines
 // for each file. It skips hidden directories and common non-source directories.
-func Walk(root string) ([]FileComplexity, error) {
+// The metric parameter controls how Complexity is populated: "loc" mirrors Lines,
+// "indentation" uses indent-sum scoring.
+func Walk(root string, metric string) ([]FileComplexity, error) {
 	var results []FileComplexity
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -46,9 +49,17 @@ func Walk(root string) ([]FileComplexity, error) {
 		}
 
 		if lines > 0 {
+			comp := lines
+			if metric == "indentation" {
+				indentSum, err := IndentSum(path)
+				if err == nil {
+					comp = indentSum
+				}
+			}
 			results = append(results, FileComplexity{
-				Path:  rel,
-				Lines: lines,
+				Path:       rel,
+				Lines:      lines,
+				Complexity: comp,
 			})
 		}
 		return nil

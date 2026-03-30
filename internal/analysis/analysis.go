@@ -50,20 +50,22 @@ func (q Quadrant) JSONString() string {
 
 // FileScore is the combined analysis result for a single file.
 type FileScore struct {
-	Path     string
-	Commits  int
-	Lines    int
-	Authors  int
-	Quadrant Quadrant
+	Path       string
+	Commits    int
+	Lines      int
+	Complexity int
+	Authors    int
+	Quadrant   Quadrant
 }
 
 // DirScore is an aggregated analysis result for a directory.
 type DirScore struct {
-	Path         string
-	Files        int
-	TotalLines   int
-	TotalCommits int
-	Quadrant     Quadrant
+	Path            string
+	Files           int
+	TotalLines      int
+	TotalComplexity int
+	TotalCommits    int
+	Quadrant        Quadrant
 }
 
 // Analyze merges churn and complexity data, classifies files into quadrants,
@@ -85,10 +87,11 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 	for _, cx := range complexities {
 		ch := churnMap[cx.Path]
 		scores = append(scores, FileScore{
-			Path:    cx.Path,
-			Commits: ch.Commits,
-			Lines:   cx.Lines,
-			Authors: ch.Authors,
+			Path:       cx.Path,
+			Commits:    ch.Commits,
+			Lines:      cx.Lines,
+			Complexity: cx.Complexity,
+			Authors:    ch.Authors,
 		})
 	}
 
@@ -97,10 +100,10 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 	}
 
 	churnThreshold := medianCommits(scores)
-	linesThreshold := medianLines(scores)
+	complexityThreshold := medianComplexity(scores)
 
 	for i := range scores {
-		scores[i].Quadrant = classify(scores[i].Commits, scores[i].Lines, churnThreshold, linesThreshold)
+		scores[i].Quadrant = classify(scores[i].Commits, scores[i].Complexity, churnThreshold, complexityThreshold)
 	}
 
 	sortScores(scores)
@@ -110,9 +113,10 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 // AnalyzeByDir aggregates file scores into directory-level results.
 func AnalyzeByDir(fileScores []FileScore) []DirScore {
 	type dirAgg struct {
-		files        int
-		totalLines   int
-		totalCommits int
+		files           int
+		totalLines      int
+		totalComplexity int
+		totalCommits    int
 	}
 
 	m := make(map[string]*dirAgg)
@@ -125,16 +129,18 @@ func AnalyzeByDir(fileScores []FileScore) []DirScore {
 		}
 		agg.files++
 		agg.totalLines += fs.Lines
+		agg.totalComplexity += fs.Complexity
 		agg.totalCommits += fs.Commits
 	}
 
 	var dirs []DirScore
 	for path, agg := range m {
 		dirs = append(dirs, DirScore{
-			Path:         path,
-			Files:        agg.files,
-			TotalLines:   agg.totalLines,
-			TotalCommits: agg.totalCommits,
+			Path:            path,
+			Files:           agg.files,
+			TotalLines:      agg.totalLines,
+			TotalComplexity: agg.totalComplexity,
+			TotalCommits:    agg.totalCommits,
 		})
 	}
 
@@ -143,10 +149,10 @@ func AnalyzeByDir(fileScores []FileScore) []DirScore {
 	}
 
 	commitThreshold := medianDirCommits(dirs)
-	linesThreshold := medianDirLines(dirs)
+	complexityThreshold := medianDirComplexity(dirs)
 
 	for i := range dirs {
-		dirs[i].Quadrant = classify(dirs[i].TotalCommits, dirs[i].TotalLines, commitThreshold, linesThreshold)
+		dirs[i].Quadrant = classify(dirs[i].TotalCommits, dirs[i].TotalComplexity, commitThreshold, complexityThreshold)
 	}
 
 	sortDirScores(dirs)
@@ -176,10 +182,10 @@ func medianCommits(scores []FileScore) int {
 	return median(vals)
 }
 
-func medianLines(scores []FileScore) int {
+func medianComplexity(scores []FileScore) int {
 	vals := make([]int, len(scores))
 	for i, s := range scores {
-		vals[i] = s.Lines
+		vals[i] = s.Complexity
 	}
 	return median(vals)
 }
@@ -192,10 +198,10 @@ func medianDirCommits(dirs []DirScore) int {
 	return median(vals)
 }
 
-func medianDirLines(dirs []DirScore) int {
+func medianDirComplexity(dirs []DirScore) int {
 	vals := make([]int, len(dirs))
 	for i, d := range dirs {
-		vals[i] = d.TotalLines
+		vals[i] = d.TotalComplexity
 	}
 	return median(vals)
 }

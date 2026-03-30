@@ -15,10 +15,10 @@ func TestAnalyze_QuadrantClassification(t *testing.T) {
 		{Path: "cold-simple.go", Commits: 1, Authors: 1},
 	}
 	complexities := []complexity.FileComplexity{
-		{Path: "hot-critical.go", Lines: 1000},
-		{Path: "hot-simple.go", Lines: 10},
-		{Path: "cold-complex.go", Lines: 900},
-		{Path: "cold-simple.go", Lines: 5},
+		{Path: "hot-critical.go", Lines: 1000, Complexity: 1000},
+		{Path: "hot-simple.go", Lines: 10, Complexity: 10},
+		{Path: "cold-complex.go", Lines: 900, Complexity: 900},
+		{Path: "cold-simple.go", Lines: 5, Complexity: 5},
 	}
 
 	scores := Analyze(churns, complexities)
@@ -53,9 +53,9 @@ func TestAnalyze_SortOrder(t *testing.T) {
 		{Path: "c.go", Commits: 50, Authors: 2},
 	}
 	complexities := []complexity.FileComplexity{
-		{Path: "a.go", Lines: 1000},
-		{Path: "b.go", Lines: 5},
-		{Path: "c.go", Lines: 500},
+		{Path: "a.go", Lines: 1000, Complexity: 1000},
+		{Path: "b.go", Lines: 5, Complexity: 5},
+		{Path: "c.go", Lines: 500, Complexity: 500},
 	}
 
 	scores := Analyze(churns, complexities)
@@ -71,7 +71,7 @@ func TestAnalyze_ExcludesDeletedFiles(t *testing.T) {
 		{Path: "deleted.go", Commits: 5, Authors: 1},
 	}
 	complexities := []complexity.FileComplexity{
-		{Path: "exists.go", Lines: 100},
+		{Path: "exists.go", Lines: 100, Complexity: 100},
 		// deleted.go not present in complexity results (not on disk)
 	}
 
@@ -86,9 +86,9 @@ func TestAnalyze_ExcludesDeletedFiles(t *testing.T) {
 
 func TestAnalyzeByDir(t *testing.T) {
 	fileScores := []FileScore{
-		{Path: "src/a.go", Commits: 10, Lines: 100, Quadrant: HotCritical},
-		{Path: "src/b.go", Commits: 5, Lines: 50, Quadrant: HotSimple},
-		{Path: "lib/c.go", Commits: 1, Lines: 200, Quadrant: ColdComplex},
+		{Path: "src/a.go", Commits: 10, Lines: 100, Complexity: 100, Quadrant: HotCritical},
+		{Path: "src/b.go", Commits: 5, Lines: 50, Complexity: 50, Quadrant: HotSimple},
+		{Path: "lib/c.go", Commits: 1, Lines: 200, Complexity: 200, Quadrant: ColdComplex},
 	}
 
 	dirs := AnalyzeByDir(fileScores)
