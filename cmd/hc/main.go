@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/will/hc/internal/complexity"
 	gitpkg "github.com/will/hc/internal/git"
 	"github.com/will/hc/internal/output"
+	"github.com/will/hc/internal/report"
 )
 
 func main() {
@@ -47,6 +49,21 @@ func main() {
 					},
 				},
 				Action: runAnalyze,
+			},
+			{
+				Name:  "report",
+				Usage: "Render analysis JSON as markdown for embedding in agent docs",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "input",
+						Usage: "Path to JSON file (default: stdin)",
+					},
+					&cli.StringFlag{
+						Name:  "output",
+						Usage: "Markdown file to upsert into (default: stdout)",
+					},
+				},
+				Action: runReport,
 			},
 		},
 	}
@@ -98,4 +115,41 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		scores = scores[:int(top)]
 	}
 	return output.FormatFiles(os.Stdout, scores, format, metric)
+}
+
+func runReport(ctx context.Context, cmd *cli.Command) error {
+	inputPath := cmd.String("input")
+	outputPath := cmd.String("output")
+
+	var input *os.File
+	if inputPath != "" {
+		f, err := os.Open(inputPath)
+		if err != nil {
+			return fmt.Errorf("opening input: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		input = f
+	} else {
+		// Hint if stdin is a terminal.
+		if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice != 0 {
+			fmt.Fprintln(os.Stderr, `reading JSON from stdin... (use --input or pipe from "hc analyze --format json")`)
+		}
+		input = os.Stdin
+	}
+
+	var buf bytes.Buffer
+	if err := report.Render(input, &buf); err != nil {
+		return fmt.Errorf("rendering report: %w", err)
+	}
+
+	if outputPath != "" {
+		if err := report.UpsertFile(outputPath, buf.String()); err != nil {
+			return fmt.Errorf("writing output: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "report written to %s\n", outputPath)
+		return nil
+	}
+
+	_, err := buf.WriteTo(os.Stdout)
+	return err
 }
