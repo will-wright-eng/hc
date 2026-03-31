@@ -22,11 +22,13 @@ Build a rename mapping after collecting raw churn data, then rewrite stale paths
 4. Pass the rewritten `[]FileChurn` into `analysis.Analyze()` as usual.
 
 **Pros:**
+
 - Clean separation — rename resolution is a standalone transformation step between git extraction and analysis.
 - No changes to `git.Log()` internals or `complexity.Walk()`.
 - Easy to test in isolation: input a `[]FileChurn` with stale paths and a rename map, assert output has current paths with merged counts.
 
 **Cons:**
+
 - Requires a separate `git log` invocation to collect rename data, adding execution time.
 - Chain resolution must handle cycles (unlikely but possible with rapid renames) and multiple files renamed to the same target.
 
@@ -41,10 +43,12 @@ Modify `gitLogFiles()` to use `--name-status` instead of `--name-only`, detect r
 3. After all commits are parsed, make a second pass to rewrite any paths that were later renamed (a file touched as `old.go` in commit 1 and renamed to `new.go` in commit 5 — commit 1's entry needs rewriting).
 
 **Pros:**
+
 - Single `git log` invocation handles both churn counting and rename detection.
 - No separate rename data structure to maintain.
 
 **Cons:**
+
 - Tangles rename logic into the parsing loop, making `gitLogFiles()` harder to follow and test.
 - Still needs a second pass to retroactively fix paths from earlier commits, so the "single pass" advantage is partially lost.
 - Changes the `git log` output format, which affects `gitLogAuthors()` as well — both functions must be updated in lockstep.
@@ -59,10 +63,12 @@ Use `git log --follow` on each file to get its full history including renames.
 2. Replace the bulk `git.Log()` call with per-file follow queries, or use the per-file results to supplement the bulk results.
 
 **Pros:**
+
 - Git handles all rename detection natively — no custom chain resolution needed.
 - Correct by construction for complex rename histories.
 
 **Cons:**
+
 - O(n) git invocations where n is the number of source files. For a repository with 1,000 source files, this means 1,000 separate `git log` calls. Prohibitively slow for any non-trivial repository.
 - `--follow` only works for a single path — it cannot be used with bulk `git log` across the whole repository.
 - Author tracking would need the same per-file treatment, doubling the invocation count.
