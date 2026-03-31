@@ -138,7 +138,33 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 			"x **complexity** (structural size), identifying where development effort concentrates\n"+
 			"and where risk accumulates. Complexity metric: **%s**.\n", metric))
 
+	hotCritical := len(grouped["hot-critical"])
+	coldComplex := len(grouped["cold-complex"])
+	total := len(entries)
+	remaining := total - hotCritical - coldComplex
+
+	sb.WriteString("\n")
+	if hotCritical > 0 {
+		sb.WriteString(fmt.Sprintf("**%d file%s %s high-risk** — they combine frequent changes with high complexity. "+
+			"Treat these as the caution zone: keep PRs small, review carefully, and add tests before modifying. ",
+			hotCritical, plural(hotCritical), pluralVerb(hotCritical)))
+	}
+	if coldComplex > 0 {
+		sb.WriteString(fmt.Sprintf("**%d file%s %s stable %s** — rarely touched but complex enough to be dangerous when changed. ",
+			coldComplex, plural(coldComplex), pluralVerb(coldComplex),
+			pluralNoun(coldComplex, "liability", "liabilities")))
+	}
+	if remaining > 0 {
+		sb.WriteString(fmt.Sprintf("The remaining %d file%s %s low-risk.", remaining, plural(remaining), pluralVerb(remaining)))
+	}
+	sb.WriteString("\n")
+
 	for _, q := range quadrantOrder {
+		items := grouped[q.Key]
+		if len(items) == 0 {
+			continue
+		}
+
 		sb.WriteString(fmt.Sprintf("\n### %s\n\n", q.Title))
 		sb.WriteString(q.Description + "\n\n")
 		if hasDecay {
@@ -149,7 +175,6 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 			sb.WriteString("|------|---------|-------|------------|--------|\n")
 		}
 
-		items := grouped[q.Key]
 		rendered := items
 		overflow := 0
 		if len(rendered) > maxPerQuadrant {
@@ -175,6 +200,27 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 
 	_, err := io.WriteString(w, sb.String())
 	return err
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+func pluralVerb(n int) string {
+	if n == 1 {
+		return "is"
+	}
+	return "are"
+}
+
+func pluralNoun(n int, singular, pluralForm string) string {
+	if n == 1 {
+		return singular
+	}
+	return pluralForm
 }
 
 func renderDirs(w io.Writer, entries []dirEntry) error {
@@ -205,6 +251,11 @@ func renderDirs(w io.Writer, entries []dirEntry) error {
 			"and where risk accumulates. Complexity metric: **%s**.\n", metric))
 
 	for _, q := range quadrantOrder {
+		items := grouped[q.Key]
+		if len(items) == 0 {
+			continue
+		}
+
 		sb.WriteString(fmt.Sprintf("\n### %s\n\n", q.Title))
 		sb.WriteString(q.Description + "\n\n")
 		if hasDecay {
@@ -215,7 +266,6 @@ func renderDirs(w io.Writer, entries []dirEntry) error {
 			sb.WriteString("|------|-------|---------------|-------------|------------------|\n")
 		}
 
-		items := grouped[q.Key]
 		rendered := items
 		overflow := 0
 		if len(rendered) > maxPerQuadrant {
