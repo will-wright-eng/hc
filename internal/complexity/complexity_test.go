@@ -39,7 +39,7 @@ func TestWalk(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("hello\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "photo.png"), []byte("not source"), 0644)
 
-	results, err := Walk(dir, "loc")
+	results, err := Walk(dir, "loc", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

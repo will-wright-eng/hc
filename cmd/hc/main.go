@@ -11,6 +11,7 @@ import (
 	"github.com/will/hc/internal/analysis"
 	"github.com/will/hc/internal/complexity"
 	gitpkg "github.com/will/hc/internal/git"
+	"github.com/will/hc/internal/ignore"
 	"github.com/will/hc/internal/output"
 	"github.com/will/hc/internal/report"
 )
@@ -50,6 +51,11 @@ func main() {
 						Name:    "indentation",
 						Aliases: []string{"i"},
 						Usage:   "Use indentation-based complexity instead of LOC",
+					},
+					&cli.StringSliceFlag{
+						Name:    "ignore",
+						Aliases: []string{"x"},
+						Usage:   "Glob pattern to exclude (repeatable, .gitignore syntax)",
 					},
 				},
 				Action: runAnalyze,
@@ -100,12 +106,20 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		metric = "indentation"
 	}
 
-	churns, err := gitpkg.Log(absPath, since)
+	// Build ignore matcher from .hcignore + --ignore flags.
+	patterns, err := ignore.LoadFile(filepath.Join(absPath, ".hcignore"))
+	if err != nil {
+		return fmt.Errorf("reading .hcignore: %w", err)
+	}
+	patterns = append(patterns, cmd.StringSlice("ignore")...)
+	ig := ignore.New(patterns)
+
+	churns, err := gitpkg.Log(absPath, since, ig)
 	if err != nil {
 		return fmt.Errorf("reading git history: %w", err)
 	}
 
-	complexities, err := complexity.Walk(absPath, metric)
+	complexities, err := complexity.Walk(absPath, metric, ig)
 	if err != nil {
 		return fmt.Errorf("analyzing file complexity: %w", err)
 	}

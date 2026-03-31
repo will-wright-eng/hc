@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/will/hc/internal/ignore"
 )
 
 // FileComplexity represents static analysis for a single file.
@@ -18,7 +20,7 @@ type FileComplexity struct {
 // for each file. It skips hidden directories and common non-source directories.
 // The metric parameter controls how Complexity is populated: "loc" mirrors Lines,
 // "indentation" uses indent-sum scoring.
-func Walk(root string, metric string) ([]FileComplexity, error) {
+func Walk(root string, metric string, ig *ignore.Matcher) ([]FileComplexity, error) {
 	var results []FileComplexity
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -36,6 +38,10 @@ func Walk(root string, metric string) ([]FileComplexity, error) {
 			if shouldSkipDir(base) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+
+		if ig.Match(rel) {
 			return nil
 		}
 

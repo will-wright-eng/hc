@@ -27,6 +27,9 @@ hc analyze -f csv
 # Use indentation-based complexity instead of LOC
 hc analyze -i
 
+# Exclude files by pattern (repeatable)
+hc analyze -x "*.pb.go" -x "testdata/**"
+
 # Generate a markdown report from JSON output
 hc analyze -f json | hc report -o report.md
 ```
@@ -42,6 +45,7 @@ hc analyze -f json | hc report -o report.md
 | `--format` | `-f` | Output format: table, json, csv (default: table) |
 | `--top` | `-n` | Limit to top N results |
 | `--indentation` | `-i` | Use indentation-based complexity instead of LOC |
+| `--ignore` | `-x` | Glob pattern to exclude (repeatable, .gitignore syntax) |
 
 #### `report`
 

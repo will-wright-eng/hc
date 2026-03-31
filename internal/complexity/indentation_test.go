@@ -108,7 +108,7 @@ func TestWalk_IndentationMetric(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "deep.go"), []byte("func f() {\n    if true {\n        x()\n    }\n}\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "flat.go"), []byte("package flat\nvar x = 1\nvar y = 2\n"), 0644)
 
-	results, err := Walk(dir, "indentation")
+	results, err := Walk(dir, "indentation", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -146,7 +146,7 @@ In `runAnalyze`:
 
 Directory-level aggregation happens after file-level analysis. Ignored files are excluded before aggregation, so directory scores reflect only the non-ignored files. A directory with all files ignored will not appear in the output.
 
-### Interaction with `--complexity-metric`
+### Interaction with `--indentation`
 
 No interaction. Ignore patterns filter files before complexity is measured, regardless of which metric is used.
 

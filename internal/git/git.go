@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/will/hc/internal/ignore"
 )
 
 // FileChurn represents git history analysis for a single file.
@@ -18,7 +20,7 @@ type FileChurn struct {
 // Log runs git log and returns per-file churn data.
 // repoPath is the root of the git repository.
 // since is an optional time window (e.g. "6 months") passed to --since.
-func Log(repoPath string, since string) ([]FileChurn, error) {
+func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error) {
 	commitFiles, err := gitLogFiles(repoPath, since)
 	if err != nil {
 		return nil, err
@@ -38,6 +40,9 @@ func Log(repoPath string, since string) ([]FileChurn, error) {
 	for _, files := range commitFiles {
 		for _, f := range files {
 			if f == "" {
+				continue
+			}
+			if ig.Match(f) {
 				continue
 			}
 			s, ok := m[f]
