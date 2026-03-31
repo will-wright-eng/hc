@@ -26,26 +26,30 @@ func main() {
 				ArgsUsage: "[path]",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:  "since",
-						Usage: "Restrict churn window (e.g. \"6 months\")",
+						Name:    "since",
+						Aliases: []string{"s"},
+						Usage:   "Restrict churn window (e.g. \"6 months\")",
 					},
 					&cli.BoolFlag{
-						Name:  "by-dir",
-						Usage: "Aggregate results by directory",
+						Name:    "by-dir",
+						Aliases: []string{"d"},
+						Usage:   "Aggregate results by directory",
 					},
 					&cli.StringFlag{
-						Name:  "format",
-						Usage: "Output format: table, json, csv",
-						Value: "table",
+						Name:    "format",
+						Aliases: []string{"f"},
+						Usage:   "Output format: table, json, csv",
+						Value:   "table",
 					},
 					&cli.IntFlag{
-						Name:  "top",
-						Usage: "Limit to top N results",
+						Name:    "top",
+						Aliases: []string{"n"},
+						Usage:   "Limit to top N results",
 					},
-					&cli.StringFlag{
-						Name:  "complexity-metric",
-						Usage: "Complexity metric: loc, indentation",
-						Value: "loc",
+					&cli.BoolFlag{
+						Name:    "indentation",
+						Aliases: []string{"i"},
+						Usage:   "Use indentation-based complexity instead of LOC",
 					},
 				},
 				Action: runAnalyze,
@@ -55,12 +59,14 @@ func main() {
 				Usage: "Render analysis JSON as markdown for embedding in agent docs",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:  "input",
-						Usage: "Path to JSON file (default: stdin)",
+						Name:    "input",
+						Aliases: []string{"I"},
+						Usage:   "Path to JSON file (default: stdin)",
 					},
 					&cli.StringFlag{
-						Name:  "output",
-						Usage: "Markdown file to upsert into (default: stdout)",
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Markdown file to upsert into (default: stdout)",
 					},
 				},
 				Action: runReport,
@@ -89,7 +95,10 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	format := cmd.String("format")
 	byDir := cmd.Bool("by-dir")
 	top := cmd.Int("top")
-	metric := cmd.String("complexity-metric")
+	metric := "loc"
+	if cmd.Bool("indentation") {
+		metric = "indentation"
+	}
 
 	churns, err := gitpkg.Log(absPath, since)
 	if err != nil {
