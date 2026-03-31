@@ -50,22 +50,24 @@ func (q Quadrant) JSONString() string {
 
 // FileScore is the combined analysis result for a single file.
 type FileScore struct {
-	Path       string
-	Commits    int
-	Lines      int
-	Complexity int
-	Authors    int
-	Quadrant   Quadrant
+	Path            string
+	Commits         int
+	WeightedCommits float64
+	Lines           int
+	Complexity      int
+	Authors         int
+	Quadrant        Quadrant
 }
 
 // DirScore is an aggregated analysis result for a directory.
 type DirScore struct {
-	Path            string
-	Files           int
-	TotalLines      int
-	TotalComplexity int
-	TotalCommits    int
-	Quadrant        Quadrant
+	Path                 string
+	Files                int
+	TotalLines           int
+	TotalComplexity      int
+	TotalCommits         int
+	TotalWeightedCommits float64
+	Quadrant             Quadrant
 }
 
 // Analyze merges churn and complexity data, classifies files into quadrants,
@@ -87,11 +89,12 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 	for _, cx := range complexities {
 		ch := churnMap[cx.Path]
 		scores = append(scores, FileScore{
-			Path:       cx.Path,
-			Commits:    ch.Commits,
-			Lines:      cx.Lines,
-			Complexity: cx.Complexity,
-			Authors:    ch.Authors,
+			Path:            cx.Path,
+			Commits:         ch.Commits,
+			WeightedCommits: ch.WeightedCommits,
+			Lines:           cx.Lines,
+			Complexity:      cx.Complexity,
+			Authors:         ch.Authors,
 		})
 	}
 
@@ -99,11 +102,11 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 		return nil
 	}
 
-	churnThreshold := medianCommits(scores)
-	complexityThreshold := medianComplexity(scores)
+	churnThreshold := medianWeightedCommits(scores)
+	complexityThreshold := float64(medianComplexity(scores))
 
 	for i := range scores {
-		scores[i].Quadrant = classify(scores[i].Commits, scores[i].Complexity, churnThreshold, complexityThreshold)
+		scores[i].Quadrant = classify(scores[i].WeightedCommits, scores[i].Complexity, churnThreshold, complexityThreshold)
 	}
 
 	sortScores(scores)
@@ -113,10 +116,11 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 // AnalyzeByDir aggregates file scores into directory-level results.
 func AnalyzeByDir(fileScores []FileScore) []DirScore {
 	type dirAgg struct {
-		files           int
-		totalLines      int
-		totalComplexity int
-		totalCommits    int
+		files                int
+		totalLines           int
+		totalComplexity      int
+		totalCommits         int
+		totalWeightedCommits float64
 	}
 
 	m := make(map[string]*dirAgg)
@@ -131,16 +135,18 @@ func AnalyzeByDir(fileScores []FileScore) []DirScore {
 		agg.totalLines += fs.Lines
 		agg.totalComplexity += fs.Complexity
 		agg.totalCommits += fs.Commits
+		agg.totalWeightedCommits += fs.WeightedCommits
 	}
 
 	var dirs []DirScore
 	for path, agg := range m {
 		dirs = append(dirs, DirScore{
-			Path:            path,
-			Files:           agg.files,
-			TotalLines:      agg.totalLines,
-			TotalComplexity: agg.totalComplexity,
-			TotalCommits:    agg.totalCommits,
+			Path:                 path,
+			Files:                agg.files,
+			TotalLines:           agg.totalLines,
+			TotalComplexity:      agg.totalComplexity,
+			TotalCommits:         agg.totalCommits,
+			TotalWeightedCommits: agg.totalWeightedCommits,
 		})
 	}
 
@@ -148,20 +154,20 @@ func AnalyzeByDir(fileScores []FileScore) []DirScore {
 		return nil
 	}
 
-	commitThreshold := medianDirCommits(dirs)
-	complexityThreshold := medianDirComplexity(dirs)
+	commitThreshold := medianDirWeightedCommits(dirs)
+	complexityThreshold := float64(medianDirComplexity(dirs))
 
 	for i := range dirs {
-		dirs[i].Quadrant = classify(dirs[i].TotalCommits, dirs[i].TotalComplexity, commitThreshold, complexityThreshold)
+		dirs[i].Quadrant = classify(dirs[i].TotalWeightedCommits, dirs[i].TotalComplexity, commitThreshold, complexityThreshold)
 	}
 
 	sortDirScores(dirs)
 	return dirs
 }
 
-func classify(commits, lines, churnThreshold, linesThreshold int) Quadrant {
-	hot := commits > churnThreshold
-	complex := lines > linesThreshold
+func classify(weightedCommits float64, lines int, churnThreshold, linesThreshold float64) Quadrant {
+	hot := weightedCommits > churnThreshold
+	complex := float64(lines) > linesThreshold
 	switch {
 	case hot && complex:
 		return HotCritical
@@ -174,12 +180,12 @@ func classify(commits, lines, churnThreshold, linesThreshold int) Quadrant {
 	}
 }
 
-func medianCommits(scores []FileScore) int {
-	vals := make([]int, len(scores))
+func medianWeightedCommits(scores []FileScore) float64 {
+	vals := make([]float64, len(scores))
 	for i, s := range scores {
-		vals[i] = s.Commits
+		vals[i] = s.WeightedCommits
 	}
-	return median(vals)
+	return medianFloat(vals)
 }
 
 func medianComplexity(scores []FileScore) int {
@@ -190,12 +196,12 @@ func medianComplexity(scores []FileScore) int {
 	return median(vals)
 }
 
-func medianDirCommits(dirs []DirScore) int {
-	vals := make([]int, len(dirs))
+func medianDirWeightedCommits(dirs []DirScore) float64 {
+	vals := make([]float64, len(dirs))
 	for i, d := range dirs {
-		vals[i] = d.TotalCommits
+		vals[i] = d.TotalWeightedCommits
 	}
-	return median(vals)
+	return medianFloat(vals)
 }
 
 func medianDirComplexity(dirs []DirScore) int {
@@ -208,6 +214,18 @@ func medianDirComplexity(dirs []DirScore) int {
 
 func median(vals []int) int {
 	sort.Ints(vals)
+	n := len(vals)
+	if n == 0 {
+		return 0
+	}
+	if n%2 == 0 {
+		return (vals[n/2-1] + vals[n/2]) / 2
+	}
+	return vals[n/2]
+}
+
+func medianFloat(vals []float64) float64 {
+	sort.Float64s(vals)
 	n := len(vals)
 	if n == 0 {
 		return 0
@@ -240,7 +258,7 @@ func sortScores(scores []FileScore) {
 		if pi != pj {
 			return pi < pj
 		}
-		return scores[i].Commits > scores[j].Commits
+		return scores[i].WeightedCommits > scores[j].WeightedCommits
 	})
 }
 
@@ -250,7 +268,7 @@ func sortDirScores(dirs []DirScore) {
 		if pi != pj {
 			return pi < pj
 		}
-		return dirs[i].TotalCommits > dirs[j].TotalCommits
+		return dirs[i].TotalWeightedCommits > dirs[j].TotalWeightedCommits
 	})
 }
 

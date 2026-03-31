@@ -7,21 +7,29 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/will/hc/internal/ignore"
 )
 
 // FileChurn represents git history analysis for a single file.
 type FileChurn struct {
-	Path    string
-	Commits int
-	Authors int
+	Path            string
+	Commits         int
+	WeightedCommits float64
+	Authors         int
+}
+
+// commitInfo holds the date and files for a single commit.
+type commitInfo struct {
+	Date  time.Time
+	Files []string
 }
 
 // Log runs git log and returns per-file churn data.
 // repoPath is the root of the git repository.
 // since is an optional time window (e.g. "6 months") passed to --since.
-func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error) {
+func Log(repoPath string, since string, ig *ignore.Matcher, halfLifeDays float64) ([]FileChurn, error) {
 	commitFiles, err := gitLogFiles(repoPath, since)
 	if err != nil {
 		return nil, err
@@ -38,14 +46,18 @@ func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error)
 	}
 
 	type stats struct {
-		commits int
-		authors map[string]struct{}
+		commits         int
+		weightedCommits float64
+		authors         map[string]struct{}
 	}
+
+	now := time.Now()
 
 	// Build raw churn map (no ignore filtering yet — need resolved paths first).
 	raw := make(map[string]*stats)
-	for _, files := range commitFiles {
-		for _, f := range files {
+	for _, ci := range commitFiles {
+		w := DecayWeight(ci.Date, now, halfLifeDays)
+		for _, f := range ci.Files {
 			if f == "" {
 				continue
 			}
@@ -55,6 +67,7 @@ func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error)
 				raw[f] = s
 			}
 			s.commits++
+			s.weightedCommits += w
 		}
 	}
 
@@ -64,6 +77,7 @@ func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error)
 		resolved := renames.Resolve(path)
 		if existing, ok := m[resolved]; ok {
 			existing.commits += s.commits
+			existing.weightedCommits += s.weightedCommits
 		} else {
 			m[resolved] = s
 		}
@@ -88,17 +102,18 @@ func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error)
 			continue
 		}
 		result = append(result, FileChurn{
-			Path:    path,
-			Commits: s.commits,
-			Authors: len(s.authors),
+			Path:            path,
+			Commits:         s.commits,
+			WeightedCommits: s.weightedCommits,
+			Authors:         len(s.authors),
 		})
 	}
 	return result, nil
 }
 
-// gitLogFiles returns a slice of file lists, one per commit.
-func gitLogFiles(repoPath string, since string) ([][]string, error) {
-	args := []string{"log", "--format=format:", "--name-only"}
+// gitLogFiles returns commit info (date + files) for each commit.
+func gitLogFiles(repoPath string, since string) ([]commitInfo, error) {
+	args := []string{"log", "--format=format:__DATE__%cI", "--name-only"}
 	if since != "" {
 		args = append(args, "--since="+since)
 	}
@@ -110,21 +125,38 @@ func gitLogFiles(repoPath string, since string) ([][]string, error) {
 		return nil, err
 	}
 
-	var commits [][]string
-	var current []string
+	var commits []commitInfo
+	var current commitInfo
+	hasDate := false
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
-			if len(current) > 0 {
+			if len(current.Files) > 0 {
 				commits = append(commits, current)
-				current = nil
+				current = commitInfo{}
+				hasDate = false
 			}
 			continue
 		}
-		current = append(current, line)
+		if strings.HasPrefix(line, "__DATE__") {
+			if len(current.Files) > 0 {
+				commits = append(commits, current)
+				current = commitInfo{}
+			}
+			dateStr := line[len("__DATE__"):]
+			t, err := time.Parse(time.RFC3339, dateStr)
+			if err == nil {
+				current.Date = t
+			}
+			hasDate = true
+			continue
+		}
+		if hasDate {
+			current.Files = append(current.Files, line)
+		}
 	}
-	if len(current) > 0 {
+	if len(current.Files) > 0 {
 		commits = append(commits, current)
 	}
 	return commits, scanner.Err()

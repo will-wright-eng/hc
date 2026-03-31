@@ -9,10 +9,10 @@ import (
 
 func TestAnalyze_QuadrantClassification(t *testing.T) {
 	churns := []git.FileChurn{
-		{Path: "hot-critical.go", Commits: 100, Authors: 5},
-		{Path: "hot-simple.go", Commits: 80, Authors: 3},
-		{Path: "cold-complex.go", Commits: 2, Authors: 1},
-		{Path: "cold-simple.go", Commits: 1, Authors: 1},
+		{Path: "hot-critical.go", Commits: 100, WeightedCommits: 100, Authors: 5},
+		{Path: "hot-simple.go", Commits: 80, WeightedCommits: 80, Authors: 3},
+		{Path: "cold-complex.go", Commits: 2, WeightedCommits: 2, Authors: 1},
+		{Path: "cold-simple.go", Commits: 1, WeightedCommits: 1, Authors: 1},
 	}
 	complexities := []complexity.FileComplexity{
 		{Path: "hot-critical.go", Lines: 1000, Complexity: 1000},
@@ -48,9 +48,9 @@ func TestAnalyze_QuadrantClassification(t *testing.T) {
 
 func TestAnalyze_SortOrder(t *testing.T) {
 	churns := []git.FileChurn{
-		{Path: "a.go", Commits: 100, Authors: 5},
-		{Path: "b.go", Commits: 1, Authors: 1},
-		{Path: "c.go", Commits: 50, Authors: 2},
+		{Path: "a.go", Commits: 100, WeightedCommits: 100, Authors: 5},
+		{Path: "b.go", Commits: 1, WeightedCommits: 1, Authors: 1},
+		{Path: "c.go", Commits: 50, WeightedCommits: 50, Authors: 2},
 	}
 	complexities := []complexity.FileComplexity{
 		{Path: "a.go", Lines: 1000, Complexity: 1000},
@@ -67,8 +67,8 @@ func TestAnalyze_SortOrder(t *testing.T) {
 
 func TestAnalyze_ExcludesDeletedFiles(t *testing.T) {
 	churns := []git.FileChurn{
-		{Path: "exists.go", Commits: 10, Authors: 1},
-		{Path: "deleted.go", Commits: 5, Authors: 1},
+		{Path: "exists.go", Commits: 10, WeightedCommits: 10, Authors: 1},
+		{Path: "deleted.go", Commits: 5, WeightedCommits: 5, Authors: 1},
 	}
 	complexities := []complexity.FileComplexity{
 		{Path: "exists.go", Lines: 100, Complexity: 100},
@@ -86,9 +86,9 @@ func TestAnalyze_ExcludesDeletedFiles(t *testing.T) {
 
 func TestAnalyzeByDir(t *testing.T) {
 	fileScores := []FileScore{
-		{Path: "src/a.go", Commits: 10, Lines: 100, Complexity: 100, Quadrant: HotCritical},
-		{Path: "src/b.go", Commits: 5, Lines: 50, Complexity: 50, Quadrant: HotSimple},
-		{Path: "lib/c.go", Commits: 1, Lines: 200, Complexity: 200, Quadrant: ColdComplex},
+		{Path: "src/a.go", Commits: 10, WeightedCommits: 10, Lines: 100, Complexity: 100, Quadrant: HotCritical},
+		{Path: "src/b.go", Commits: 5, WeightedCommits: 5, Lines: 50, Complexity: 50, Quadrant: HotSimple},
+		{Path: "lib/c.go", Commits: 1, WeightedCommits: 1, Lines: 200, Complexity: 200, Quadrant: ColdComplex},
 	}
 
 	dirs := AnalyzeByDir(fileScores)

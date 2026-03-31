@@ -22,3 +22,6 @@ install: ## install the hc binary
 
 lint: ## run linting
 	go vet $(REPO_ROOT)/...
+
+e2e: ## run e2e tests with decay, indentation, and report
+	./hc analyze -D -i --format json | ./hc report

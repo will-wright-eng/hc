@@ -57,6 +57,16 @@ func main() {
 						Aliases: []string{"x"},
 						Usage:   "Glob pattern to exclude (repeatable, .gitignore syntax)",
 					},
+					&cli.BoolFlag{
+						Name:    "decay",
+						Aliases: []string{"D"},
+						Usage:   "Weight commits by recency (exponential decay)",
+					},
+					&cli.StringFlag{
+						Name:  "decay-half-life",
+						Usage: "Half-life for decay weighting (e.g. \"90 days\", \"6 months\")",
+						Value: "6 months",
+					},
 				},
 				Action: runAnalyze,
 			},
@@ -114,7 +124,16 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	patterns = append(patterns, cmd.StringSlice("ignore")...)
 	ig := ignore.New(patterns)
 
-	churns, err := gitpkg.Log(absPath, since, ig)
+	decay := cmd.Bool("decay")
+	var halfLifeDays float64
+	if decay {
+		halfLifeDays, err = gitpkg.ParseHalfLife(cmd.String("decay-half-life"))
+		if err != nil {
+			return fmt.Errorf("parsing decay half-life: %w", err)
+		}
+	}
+
+	churns, err := gitpkg.Log(absPath, since, ig, halfLifeDays)
 	if err != nil {
 		return fmt.Errorf("reading git history: %w", err)
 	}
@@ -131,13 +150,13 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		if top > 0 && int(top) < len(dirs) {
 			dirs = dirs[:int(top)]
 		}
-		return output.FormatDirs(os.Stdout, dirs, format, metric)
+		return output.FormatDirs(os.Stdout, dirs, format, metric, decay)
 	}
 
 	if top > 0 && int(top) < len(scores) {
 		scores = scores[:int(top)]
 	}
-	return output.FormatFiles(os.Stdout, scores, format, metric)
+	return output.FormatFiles(os.Stdout, scores, format, metric, decay)
 }
 
 func runReport(ctx context.Context, cmd *cli.Command) error {

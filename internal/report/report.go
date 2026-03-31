@@ -12,24 +12,26 @@ const maxPerQuadrant = 15
 
 // fileEntry is the local struct for decoding analyze JSON output.
 type fileEntry struct {
-	Path       string `json:"path"`
-	Commits    int    `json:"commits"`
-	Lines      int    `json:"lines"`
-	Complexity int    `json:"complexity"`
-	Authors    int    `json:"authors"`
-	Quadrant   string `json:"quadrant"`
-	Metric     string `json:"metric"`
+	Path            string  `json:"path"`
+	Commits         int     `json:"commits"`
+	WeightedCommits float64 `json:"weighted_commits,omitempty"`
+	Lines           int     `json:"lines"`
+	Complexity      int     `json:"complexity"`
+	Authors         int     `json:"authors"`
+	Quadrant        string  `json:"quadrant"`
+	Metric          string  `json:"metric"`
 }
 
 // dirEntry is the local struct for decoding directory-level analyze JSON output.
 type dirEntry struct {
-	Path            string `json:"path"`
-	Files           int    `json:"files"`
-	TotalCommits    int    `json:"total_commits"`
-	TotalLines      int    `json:"total_lines"`
-	TotalComplexity int    `json:"total_complexity"`
-	Quadrant        string `json:"quadrant"`
-	Metric          string `json:"metric"`
+	Path                 string  `json:"path"`
+	Files                int     `json:"files"`
+	TotalCommits         int     `json:"total_commits"`
+	TotalWeightedCommits float64 `json:"total_weighted_commits,omitempty"`
+	TotalLines           int     `json:"total_lines"`
+	TotalComplexity      int     `json:"total_complexity"`
+	Quadrant             string  `json:"quadrant"`
+	Metric               string  `json:"metric"`
 }
 
 type quadrantInfo struct {
@@ -114,6 +116,15 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 		metric = entries[0].Metric
 	}
 
+	// Detect decay: if any entry has a non-zero weighted score, show the column.
+	hasDecay := false
+	for _, e := range entries {
+		if e.WeightedCommits > 0 {
+			hasDecay = true
+			break
+		}
+	}
+
 	grouped := make(map[string][]fileEntry)
 	for _, e := range entries {
 		grouped[e.Quadrant] = append(grouped[e.Quadrant], e)
@@ -130,8 +141,13 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 	for _, q := range quadrantOrder {
 		sb.WriteString(fmt.Sprintf("\n### %s\n\n", q.Title))
 		sb.WriteString(q.Description + "\n\n")
-		sb.WriteString("| Path | Commits | Lines | Complexity | Authors |\n")
-		sb.WriteString("|------|---------|-------|------------|--------|\n")
+		if hasDecay {
+			sb.WriteString("| Path | Commits | Score | Lines | Complexity | Authors |\n")
+			sb.WriteString("|------|---------|-------|-------|------------|--------|\n")
+		} else {
+			sb.WriteString("| Path | Commits | Lines | Complexity | Authors |\n")
+			sb.WriteString("|------|---------|-------|------------|--------|\n")
+		}
 
 		items := grouped[q.Key]
 		rendered := items
@@ -141,8 +157,13 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 			rendered = rendered[:maxPerQuadrant]
 		}
 		for _, e := range rendered {
-			sb.WriteString(fmt.Sprintf("| %s | %d | %d | %d | %d |\n",
-				e.Path, e.Commits, e.Lines, e.Complexity, e.Authors))
+			if hasDecay {
+				sb.WriteString(fmt.Sprintf("| %s | %d | %.1f | %d | %d | %d |\n",
+					e.Path, e.Commits, e.WeightedCommits, e.Lines, e.Complexity, e.Authors))
+			} else {
+				sb.WriteString(fmt.Sprintf("| %s | %d | %d | %d | %d |\n",
+					e.Path, e.Commits, e.Lines, e.Complexity, e.Authors))
+			}
 		}
 		if overflow > 0 {
 			sb.WriteString(fmt.Sprintf("\n*(...and %d more)*\n", overflow))
@@ -162,6 +183,14 @@ func renderDirs(w io.Writer, entries []dirEntry) error {
 		metric = entries[0].Metric
 	}
 
+	hasDecay := false
+	for _, e := range entries {
+		if e.TotalWeightedCommits > 0 {
+			hasDecay = true
+			break
+		}
+	}
+
 	grouped := make(map[string][]dirEntry)
 	for _, e := range entries {
 		grouped[e.Quadrant] = append(grouped[e.Quadrant], e)
@@ -178,8 +207,13 @@ func renderDirs(w io.Writer, entries []dirEntry) error {
 	for _, q := range quadrantOrder {
 		sb.WriteString(fmt.Sprintf("\n### %s\n\n", q.Title))
 		sb.WriteString(q.Description + "\n\n")
-		sb.WriteString("| Path | Files | Total Commits | Total Lines | Total Complexity |\n")
-		sb.WriteString("|------|-------|---------------|-------------|------------------|\n")
+		if hasDecay {
+			sb.WriteString("| Path | Files | Total Commits | Score | Total Lines | Total Complexity |\n")
+			sb.WriteString("|------|-------|---------------|-------|-------------|------------------|\n")
+		} else {
+			sb.WriteString("| Path | Files | Total Commits | Total Lines | Total Complexity |\n")
+			sb.WriteString("|------|-------|---------------|-------------|------------------|\n")
+		}
 
 		items := grouped[q.Key]
 		rendered := items
@@ -189,8 +223,13 @@ func renderDirs(w io.Writer, entries []dirEntry) error {
 			rendered = rendered[:maxPerQuadrant]
 		}
 		for _, e := range rendered {
-			sb.WriteString(fmt.Sprintf("| %s | %d | %d | %d | %d |\n",
-				e.Path, e.Files, e.TotalCommits, e.TotalLines, e.TotalComplexity))
+			if hasDecay {
+				sb.WriteString(fmt.Sprintf("| %s | %d | %d | %.1f | %d | %d |\n",
+					e.Path, e.Files, e.TotalCommits, e.TotalWeightedCommits, e.TotalLines, e.TotalComplexity))
+			} else {
+				sb.WriteString(fmt.Sprintf("| %s | %d | %d | %d | %d |\n",
+					e.Path, e.Files, e.TotalCommits, e.TotalLines, e.TotalComplexity))
+			}
 		}
 		if overflow > 0 {
 			sb.WriteString(fmt.Sprintf("\n*(...and %d more)*\n", overflow))

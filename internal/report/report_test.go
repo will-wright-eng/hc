@@ -93,6 +93,34 @@ func TestRender_Truncation(t *testing.T) {
 	}
 }
 
+func TestRender_WithDecayScores(t *testing.T) {
+	input := `[{"path":"a.go","commits":10,"weighted_commits":8.5,"lines":100,"complexity":100,"authors":1,"quadrant":"hot-critical","metric":"loc"}]`
+	var buf bytes.Buffer
+	err := Render(strings.NewReader(input), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Score") {
+		t.Error("output should contain Score column header when decay scores present")
+	}
+	if !strings.Contains(out, "8.5") {
+		t.Error("output should contain the weighted score value")
+	}
+}
+
+func TestRender_WithoutDecayScores(t *testing.T) {
+	input := `[{"path":"a.go","commits":10,"lines":100,"complexity":100,"authors":1,"quadrant":"hot-critical","metric":"loc"}]`
+	var buf bytes.Buffer
+	err := Render(strings.NewReader(input), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "Score") {
+		t.Error("output should not contain Score column when no decay scores")
+	}
+}
+
 func TestRender_IndentationMetric(t *testing.T) {
 	input := `[{"path":"a.go","commits":10,"lines":100,"complexity":500,"authors":1,"quadrant":"hot-critical","metric":"indentation"}]`
 	var buf bytes.Buffer
