@@ -15,12 +15,37 @@ go install github.com/will/hc/cmd/hc@latest
 hc analyze
 
 # Last 6 months, top 20 results
-hc analyze --since "6 months" --top 20
+hc analyze -s "6 months" -n 20
 
 # Aggregate by directory
-hc analyze --by-dir
+hc analyze -d
 
 # Output as JSON or CSV
-hc analyze --format json
-hc analyze --format csv
+hc analyze -f json
+hc analyze -f csv
+
+# Use indentation-based complexity instead of LOC
+hc analyze -i
+
+# Generate a markdown report from JSON output
+hc analyze -f json | hc report -o report.md
 ```
+
+### Flags
+
+#### `analyze`
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--since` | `-s` | Restrict churn window (e.g. "6 months") |
+| `--by-dir` | `-d` | Aggregate results by directory |
+| `--format` | `-f` | Output format: table, json, csv (default: table) |
+| `--top` | `-n` | Limit to top N results |
+| `--indentation` | `-i` | Use indentation-based complexity instead of LOC |
+
+#### `report`
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--input` | `-I` | Path to JSON file (default: stdin) |
+| `--output` | `-o` | Markdown file to upsert into (default: stdout) |
