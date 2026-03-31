@@ -112,37 +112,68 @@ func (rm RenameMap) Resolve(path string) string
 
 ### `git.Log()`
 
-After building the `FileChurn` slice from the existing parsing logic, apply the rename map:
+After building the churn and author maps from the existing parsing logic, apply the rename map to both before merging them and filtering by ignore patterns. `Log()` currently accepts an `*ignore.Matcher` (from the ignore-patterns feature) — the ignore check must move after rename resolution so that filtering uses the current (resolved) path, not the historical path.
 
 ```go
-func Log(repoPath string, since string) ([]FileChurn, error) {
-    // ... existing parsing ...
+func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error) {
+    // ... existing parsing into churn map m and authorMap ...
 
     renames, err := DetectRenames(repoPath, since)
     if err != nil {
         return nil, fmt.Errorf("detecting renames: %w", err)
     }
 
-    // Rewrite paths and merge churn for renamed files.
+    // Rewrite churn paths and merge entries for renamed files.
     merged := make(map[string]*stats)
     for path, s := range m {
         resolved := renames.Resolve(path)
         if existing, ok := merged[resolved]; ok {
             existing.commits += s.commits
-            // Merge author sets
-            for _, a := range s.authors {
-                existing.authors = append(existing.authors, a)
+            for a := range s.authors {
+                existing.authors[a] = struct{}{}
             }
         } else {
             merged[resolved] = s
         }
     }
 
-    // ... build []FileChurn from merged map, dedup authors ...
+    // Rewrite author map paths and merge entries for renamed files.
+    mergedAuthors := make(map[string][]string)
+    for path, authors := range authorMap {
+        resolved := renames.Resolve(path)
+        mergedAuthors[resolved] = append(mergedAuthors[resolved], authors...)
+    }
+
+    // Merge authors into churn stats (existing logic, now using resolved paths).
+    for path, authors := range mergedAuthors {
+        s, ok := merged[path]
+        if !ok {
+            continue
+        }
+        for _, a := range authors {
+            s.authors[a] = struct{}{}
+        }
+    }
+
+    // Build result, applying ignore filter on resolved paths.
+    result := make([]FileChurn, 0, len(merged))
+    for path, s := range merged {
+        if ig.Match(path) {
+            continue
+        }
+        result = append(result, FileChurn{
+            Path:    path,
+            Commits: s.commits,
+            Authors: len(s.authors),
+        })
+    }
+    return result, nil
 }
 ```
 
 This is the primary integration point. The rename map is applied inside `Log()` so that callers (including `analysis.Analyze()`) receive churn data with current paths. No downstream changes are needed.
+
+Note: the current implementation applies ignore filtering during churn accumulation. With rename resolution, the ignore check must move to after the rename+merge step so that `ig.Match()` evaluates the resolved (current) path. This ensures a file renamed from an ignored path to a non-ignored path appears in results.
 
 ### `analysis.Analyze()`
 
@@ -180,7 +211,7 @@ Directory aggregation uses `dirOf(fs.Path)`. Since paths are resolved to current
 
 ### Interaction with `--ignore`
 
-If ignore patterns are implemented (see `ignore-patterns.md`), the ignore check should run after rename resolution. A file renamed from an ignored path to a non-ignored path should appear in results. The current path determines whether the file is ignored, not any historical path.
+Ignore patterns (`--ignore` / `-x` flag and `.hcignore` file) are now implemented. The ignore check currently runs during churn accumulation in `git.Log()`. With rename resolution, this check must move to after the rename+merge step so that `ig.Match()` evaluates the resolved (current) path. A file renamed from an ignored path to a non-ignored path should appear in results. The current path determines whether the file is ignored, not any historical path. See the updated `git.Log()` code example above.
 
 ---
 
@@ -206,9 +237,9 @@ The additional `git log` invocation for rename detection adds time. For most rep
 
 ### Author deduplication after merge
 
-When two `FileChurn` entries are merged (old path + new path -> current path), their author lists must be deduplicated. An author who committed to both the old and new path should be counted once.
+When two churn entries are merged (old path + new path -> current path), their author sets must be deduplicated. An author who committed to both the old and new path should be counted once.
 
-**Mitigation:** The existing `Log()` function already deduplicates authors per file. The merge step must apply the same deduplication to the combined author list. Use the same map-based dedup approach already in `gitLogAuthors()`.
+**Mitigation:** The `stats` struct in `Log()` already stores authors as `map[string]struct{}`, so merging two author sets is naturally deduplicated — inserting into the map is idempotent. The `authorMap` returned by `gitLogAuthors()` uses `[]string` slices, but these are also merged into the `map[string]struct{}` on the stats struct. No additional dedup logic is needed beyond what the code example above already shows.
 
 ### Rename within the `--since` window vs. churn outside it
 
