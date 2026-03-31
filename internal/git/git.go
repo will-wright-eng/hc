@@ -3,6 +3,7 @@ package git
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -31,31 +32,47 @@ func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error)
 		return nil, err
 	}
 
+	renames, err := DetectRenames(repoPath, since)
+	if err != nil {
+		return nil, fmt.Errorf("detecting renames: %w", err)
+	}
+
 	type stats struct {
 		commits int
 		authors map[string]struct{}
 	}
 
-	m := make(map[string]*stats)
+	// Build raw churn map (no ignore filtering yet — need resolved paths first).
+	raw := make(map[string]*stats)
 	for _, files := range commitFiles {
 		for _, f := range files {
 			if f == "" {
 				continue
 			}
-			if ig.Match(f) {
-				continue
-			}
-			s, ok := m[f]
+			s, ok := raw[f]
 			if !ok {
 				s = &stats{authors: make(map[string]struct{})}
-				m[f] = s
+				raw[f] = s
 			}
 			s.commits++
 		}
 	}
 
+	// Rewrite churn map keys through rename resolution, merging stats.
+	m := make(map[string]*stats)
+	for path, s := range raw {
+		resolved := renames.Resolve(path)
+		if existing, ok := m[resolved]; ok {
+			existing.commits += s.commits
+		} else {
+			m[resolved] = s
+		}
+	}
+
+	// Rewrite author map keys through rename resolution, then merge into stats.
 	for path, authors := range authorMap {
-		s, ok := m[path]
+		resolved := renames.Resolve(path)
+		s, ok := m[resolved]
 		if !ok {
 			continue
 		}
@@ -64,8 +81,12 @@ func Log(repoPath string, since string, ig *ignore.Matcher) ([]FileChurn, error)
 		}
 	}
 
+	// Build result, applying ignore filter on resolved paths.
 	result := make([]FileChurn, 0, len(m))
 	for path, s := range m {
+		if ig.Match(path) {
+			continue
+		}
 		result = append(result, FileChurn{
 			Path:    path,
 			Commits: s.commits,
