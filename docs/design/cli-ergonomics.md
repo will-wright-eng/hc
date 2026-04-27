@@ -245,34 +245,34 @@ Two views of the same 12 issues. The **tier** view answers "what should I ship f
 
 These bite on every invocation or hide a real footgun. They also unblock or simplify later tiers.
 
-| # | Change | Why first |
-|---|---|---|
-| 1 | Default action: `hc` → `hc analyze` | Removes friction from every invocation. |
-| 11 | Rename `report --output` → `--upsert`; make `--output` overwrite | Current behavior contradicts every other Unix tool — surprising even to the author. |
-| 3 | `--format` → `-o, --output FORMAT`; add `--json` | Frees `-f` from a tar/grep/find collision. Hits every JSON pipeline. |
-| 4 | Collapse `--decay` + `--decay-half-life` → `--decay[=HALFLIFE]` | Halves the decay surface area. Eliminates the `-D` short flag (resolves part of #2). |
+| # | Change | Why first | Status |
+|---|---|---|---|
+| 1 | Default action: `hc` → `hc analyze` | Removes friction from every invocation. | ✅ Implemented |
+| 11 | Rename `report --output` → `--upsert`; make `--output` overwrite | Current behavior contradicts every other Unix tool — surprising even to the author. | ✅ Implemented |
+| 3 | `--format` → `-o, --output FORMAT`; add `--json` | Frees `-f` from a tar/grep/find collision. Hits every JSON pipeline. | ✅ Implemented |
+| 4 | Collapse `--decay` + `--decay-half-life` → `--decay[=HALFLIFE]` | Halves the decay surface area. Eliminates the `-D` short flag (resolves part of #2). | ❌ Not implemented |
 
 #### Tier 2 — Cleanup, ship next
 
 Lower frequency but worth doing in one batch since they're all renames or boolean→enum conversions.
 
-| # | Change | Why second |
-|---|---|---|
-| 6 | `--ignore` / `-x` → `--exclude` / `-e` | Aligns with tar/rsync/grep. `-x` carries a strong "extract" prior. |
-| 7 | `--by-dir` boolean → `--by file\|dir\|author` enum | Extensible. Removes another short-flag collision. |
-| 5 | `prompt ignore-file-spec` → `prompt ignore` | Drops the hyphenated leaf. Sets the pattern for future `prompt <noun>` commands. |
-| 2 | Audit remaining short-flag casing | Mostly resolved by Tier 1 (#4) and Tier 2 (#7). Whatever's left, tidy. |
+| # | Change | Why second | Status |
+|---|---|---|---|
+| 6 | `--ignore` / `-x` → `--exclude` / `-e` | Aligns with tar/rsync/grep. `-x` carries a strong "extract" prior. | ✅ Implemented |
+| 7 | `--by-dir` boolean → `--by file\|dir\|author` enum | Extensible. Removes another short-flag collision. | ❌ Not implemented |
+| 5 | `prompt ignore-file-spec` → `prompt ignore` | Drops the hyphenated leaf. Sets the pattern for future `prompt <noun>` commands. | ✅ Implemented |
+| 2 | Audit remaining short-flag casing | Mostly resolved by Tier 1 (#4) and Tier 2 (#7). Whatever's left, tidy. | ⚠️ Partial — `-D` (decay) and `-d` (by-dir) still present |
 
 #### Tier 3 — Polish, ship when convenient
 
 Standard-flag hygiene and documentation. None of these block anything.
 
-| # | Change | Why last |
-|---|---|---|
-| 10 | Add `--color=auto\|always\|never`, `-v`, `-q`; honor `NO_COLOR`; audit stderr/stdout split on `analyze` | Only matters in specific contexts (CI, scripts, no-color terminals). |
-| 8 | Optional: rename `--top` → `--limit` long form | Defensible either way. Keep `-n`. |
-| 9 | Document `--since` parser semantics | No code change. |
-| 12 | Document path-positional asymmetry between `analyze` and `report` in `--help` | No code change. |
+| # | Change | Why last | Status |
+|---|---|---|---|
+| 10 | Add `--color=auto\|always\|never`, `-v`, `-q`; honor `NO_COLOR`; audit stderr/stdout split on `analyze` | Only matters in specific contexts (CI, scripts, no-color terminals). | ❌ Not implemented |
+| 8 | Optional: rename `--top` → `--limit` long form | Defensible either way. Keep `-n`. | ✅ Implemented |
+| 9 | Document `--since` parser semantics | No code change. | ❌ Not documented |
+| 12 | Document path-positional asymmetry between `analyze` and `report` in `--help` | No code change. | ❌ Not documented |
 
 ### By Category
 

@@ -10,25 +10,30 @@ go install github.com/will-wright-eng/hc/cmd/hc@latest
 
 ## Usage
 
+`hc [path]` is sugar for `hc analyze [path]` — bare `hc` analyzes the current repo. Use the explicit `hc analyze ...` form when piping or scripting.
+
 ```sh
 # Analyze current repo
-hc analyze
+hc
+
+# Analyze a specific path
+hc internal/
 
 # Last 6 months, top 20 results
-hc analyze -s "6 months" -n 20
+hc -s "6 months" -n 20
 
 # Aggregate by directory
-hc analyze -d
+hc -d
 
 # Output as JSON or CSV
-hc analyze --json
-hc analyze -o csv
+hc --json
+hc -o csv
 
 # Use indentation-based complexity instead of LOC
-hc analyze -i
+hc -i
 
 # Exclude files by pattern (repeatable)
-hc analyze -e "*.pb.go" -e "testdata/**"
+hc -e "*.pb.go" -e "testdata/**"
 
 # Generate a markdown report from JSON output
 hc analyze --json | hc report -o report.md

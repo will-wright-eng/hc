@@ -17,63 +17,72 @@ import (
 	"github.com/will-wright-eng/hc/internal/report"
 )
 
+// analyzeFlags returns a fresh slice each call. urfave/cli mutates flag state
+// during parse, so root and subcommand must not share the same flag pointers.
+func analyzeFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:    "since",
+			Aliases: []string{"s"},
+			Usage:   "Restrict churn window (e.g. \"6 months\")",
+		},
+		&cli.BoolFlag{
+			Name:    "by-dir",
+			Aliases: []string{"d"},
+			Usage:   "Aggregate results by directory",
+		},
+		&cli.StringFlag{
+			Name:    "output",
+			Aliases: []string{"o"},
+			Usage:   "Output format: table, json, csv",
+			Value:   "table",
+		},
+		&cli.BoolFlag{
+			Name:  "json",
+			Usage: "Shortcut for --output json",
+		},
+		&cli.IntFlag{
+			Name:    "limit",
+			Aliases: []string{"n"},
+			Usage:   "Limit to top N results",
+		},
+		&cli.BoolFlag{
+			Name:    "indentation",
+			Aliases: []string{"i"},
+			Usage:   "Use indentation-based complexity instead of LOC",
+		},
+		&cli.StringSliceFlag{
+			Name:    "exclude",
+			Aliases: []string{"e"},
+			Usage:   "Glob pattern to exclude (repeatable, .gitignore syntax)",
+		},
+		&cli.BoolFlag{
+			Name:    "decay",
+			Aliases: []string{"D"},
+			Usage:   "Weight commits by recency (exponential decay)",
+		},
+		&cli.StringFlag{
+			Name:  "decay-half-life",
+			Usage: "Half-life for decay weighting (e.g. \"90 days\", \"6 months\")",
+			Value: "6 months",
+		},
+	}
+}
+
 func main() {
 	cmd := &cli.Command{
-		Name:  "hc",
-		Usage: "Hot/Cold codebase analysis — churn × complexity hotspot matrix",
+		Name:      "hc",
+		Usage:     "Hot/Cold codebase analysis — churn × complexity hotspot matrix",
+		ArgsUsage: "[path]",
+		Flags:     analyzeFlags(),
+		Action:    runAnalyze,
 		Commands: []*cli.Command{
 			{
 				Name:      "analyze",
 				Usage:     "Analyze a git repository for hotspots",
 				ArgsUsage: "[path]",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "since",
-						Aliases: []string{"s"},
-						Usage:   "Restrict churn window (e.g. \"6 months\")",
-					},
-					&cli.BoolFlag{
-						Name:    "by-dir",
-						Aliases: []string{"d"},
-						Usage:   "Aggregate results by directory",
-					},
-					&cli.StringFlag{
-						Name:    "output",
-						Aliases: []string{"o"},
-						Usage:   "Output format: table, json, csv",
-						Value:   "table",
-					},
-					&cli.BoolFlag{
-						Name:  "json",
-						Usage: "Shortcut for --output json",
-					},
-					&cli.IntFlag{
-						Name:    "limit",
-						Aliases: []string{"n"},
-						Usage:   "Limit to top N results",
-					},
-					&cli.BoolFlag{
-						Name:    "indentation",
-						Aliases: []string{"i"},
-						Usage:   "Use indentation-based complexity instead of LOC",
-					},
-					&cli.StringSliceFlag{
-						Name:    "exclude",
-						Aliases: []string{"e"},
-						Usage:   "Glob pattern to exclude (repeatable, .gitignore syntax)",
-					},
-					&cli.BoolFlag{
-						Name:    "decay",
-						Aliases: []string{"D"},
-						Usage:   "Weight commits by recency (exponential decay)",
-					},
-					&cli.StringFlag{
-						Name:  "decay-half-life",
-						Usage: "Half-life for decay weighting (e.g. \"90 days\", \"6 months\")",
-						Value: "6 months",
-					},
-				},
-				Action: runAnalyze,
+				Flags:     analyzeFlags(),
+				Action:    runAnalyze,
 			},
 			{
 				Name:  "report",
@@ -128,15 +137,22 @@ func main() {
 	}
 }
 
-func runAnalyze(ctx context.Context, cmd *cli.Command) error {
+func resolvePathArg(cmd *cli.Command) (string, error) {
 	path := cmd.Args().First()
 	if path == "" {
 		path = "."
 	}
-
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return fmt.Errorf("resolving path: %w", err)
+		return "", fmt.Errorf("resolving path: %w", err)
+	}
+	return absPath, nil
+}
+
+func runAnalyze(ctx context.Context, cmd *cli.Command) error {
+	absPath, err := resolvePathArg(cmd)
+	if err != nil {
+		return err
 	}
 
 	since := cmd.String("since")
@@ -151,7 +167,6 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		metric = "indentation"
 	}
 
-	// Build ignore matcher from .hcignore + --exclude flags.
 	patterns, err := ignore.LoadFile(filepath.Join(absPath, ".hcignore"))
 	if err != nil {
 		return fmt.Errorf("reading .hcignore: %w", err)
@@ -212,7 +227,6 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 		defer func() { _ = f.Close() }()
 		input = f
 	} else {
-		// Hint if stdin is a terminal.
 		if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice != 0 {
 			fmt.Fprintln(os.Stderr, `reading JSON from stdin... (use --input or pipe from "hc analyze --json")`)
 		}
@@ -244,14 +258,9 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runPromptIgnore(ctx context.Context, cmd *cli.Command) error {
-	path := cmd.Args().First()
-	if path == "" {
-		path = "."
-	}
-
-	absPath, err := filepath.Abs(path)
+	absPath, err := resolvePathArg(cmd)
 	if err != nil {
-		return fmt.Errorf("resolving path: %w", err)
+		return err
 	}
 
 	opts := prompt.IgnoreOpts{
