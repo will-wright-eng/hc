@@ -1,4 +1,4 @@
-module github.com/will/hc
+module github.com/will-wright-eng/hc
 
 go 1.26.1
 

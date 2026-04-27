@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/will/hc/internal/analysis"
+	"github.com/will-wright-eng/hc/internal/analysis"
 )
 
 func sampleScores() []analysis.FileScore {

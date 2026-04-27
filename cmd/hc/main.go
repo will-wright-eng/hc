@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 
 	"github.com/urfave/cli/v3"
-	"github.com/will/hc/internal/analysis"
-	"github.com/will/hc/internal/complexity"
-	gitpkg "github.com/will/hc/internal/git"
-	"github.com/will/hc/internal/ignore"
-	"github.com/will/hc/internal/output"
-	"github.com/will/hc/internal/prompt"
-	"github.com/will/hc/internal/report"
+	"github.com/will-wright-eng/hc/internal/analysis"
+	"github.com/will-wright-eng/hc/internal/complexity"
+	gitpkg "github.com/will-wright-eng/hc/internal/git"
+	"github.com/will-wright-eng/hc/internal/ignore"
+	"github.com/will-wright-eng/hc/internal/output"
+	"github.com/will-wright-eng/hc/internal/prompt"
+	"github.com/will-wright-eng/hc/internal/report"
 )
 
 func main() {

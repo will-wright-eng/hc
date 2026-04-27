@@ -7,7 +7,7 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/will/hc/internal/analysis"
+	"github.com/will-wright-eng/hc/internal/analysis"
 )
 
 // FormatFiles writes file scores in the given format.

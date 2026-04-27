@@ -5,7 +5,7 @@ Hot/Cold codebase analysis -- finds hotspots by combining git churn with file co
 ## Install
 
 ```sh
-go install github.com/will/hc/cmd/hc@latest
+go install github.com/will-wright-eng/hc/cmd/hc@latest
 ```
 
 ## Usage

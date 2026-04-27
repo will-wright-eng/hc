@@ -3,8 +3,8 @@ package analysis
 import (
 	"sort"
 
-	"github.com/will/hc/internal/complexity"
-	"github.com/will/hc/internal/git"
+	"github.com/will-wright-eng/hc/internal/complexity"
+	"github.com/will-wright-eng/hc/internal/git"
 )
 
 // Quadrant classifies a file or directory by churn × complexity.

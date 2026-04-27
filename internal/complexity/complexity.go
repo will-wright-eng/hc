@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/will/hc/internal/ignore"
+	"github.com/will-wright-eng/hc/internal/ignore"
 )
 
 // FileComplexity represents static analysis for a single file.

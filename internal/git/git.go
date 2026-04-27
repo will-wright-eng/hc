@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/will/hc/internal/ignore"
+	"github.com/will-wright-eng/hc/internal/ignore"
 )
 
 // FileChurn represents git history analysis for a single file.
