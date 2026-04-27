@@ -38,13 +38,17 @@ func main() {
 						Usage:   "Aggregate results by directory",
 					},
 					&cli.StringFlag{
-						Name:    "format",
-						Aliases: []string{"f"},
+						Name:    "output",
+						Aliases: []string{"o"},
 						Usage:   "Output format: table, json, csv",
 						Value:   "table",
 					},
+					&cli.BoolFlag{
+						Name:  "json",
+						Usage: "Shortcut for --output json",
+					},
 					&cli.IntFlag{
-						Name:    "top",
+						Name:    "limit",
 						Aliases: []string{"n"},
 						Usage:   "Limit to top N results",
 					},
@@ -54,8 +58,8 @@ func main() {
 						Usage:   "Use indentation-based complexity instead of LOC",
 					},
 					&cli.StringSliceFlag{
-						Name:    "ignore",
-						Aliases: []string{"x"},
+						Name:    "exclude",
+						Aliases: []string{"e"},
 						Usage:   "Glob pattern to exclude (repeatable, .gitignore syntax)",
 					},
 					&cli.BoolFlag{
@@ -77,13 +81,17 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "input",
-						Aliases: []string{"I"},
+						Aliases: []string{"i"},
 						Usage:   "Path to JSON file (default: stdin)",
 					},
 					&cli.StringFlag{
 						Name:    "output",
 						Aliases: []string{"o"},
-						Usage:   "Markdown file to upsert into (default: stdout)",
+						Usage:   "Write report to FILE (overwrites; default: stdout)",
+					},
+					&cli.StringFlag{
+						Name:  "upsert",
+						Usage: "Inject report into existing markdown file (preserves surrounding content)",
 					},
 				},
 				Action: runReport,
@@ -93,7 +101,7 @@ func main() {
 				Usage: "Generate LLM prompts for hc workflows",
 				Commands: []*cli.Command{
 					{
-						Name:      "ignore-file-spec",
+						Name:      "ignore",
 						Usage:     "Emit a prompt that asks an LLM to generate a .hcignore file",
 						ArgsUsage: "[path]",
 						Flags: []cli.Flag{
@@ -107,7 +115,7 @@ func main() {
 								Usage: "Omit the repo summary from the prompt",
 							},
 						},
-						Action: runPromptIgnoreFileSpec,
+						Action: runPromptIgnore,
 					},
 				},
 			},
@@ -132,20 +140,23 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	since := cmd.String("since")
-	format := cmd.String("format")
+	format := cmd.String("output")
+	if cmd.Bool("json") {
+		format = "json"
+	}
 	byDir := cmd.Bool("by-dir")
-	top := cmd.Int("top")
+	limit := cmd.Int("limit")
 	metric := "loc"
 	if cmd.Bool("indentation") {
 		metric = "indentation"
 	}
 
-	// Build ignore matcher from .hcignore + --ignore flags.
+	// Build ignore matcher from .hcignore + --exclude flags.
 	patterns, err := ignore.LoadFile(filepath.Join(absPath, ".hcignore"))
 	if err != nil {
 		return fmt.Errorf("reading .hcignore: %w", err)
 	}
-	patterns = append(patterns, cmd.StringSlice("ignore")...)
+	patterns = append(patterns, cmd.StringSlice("exclude")...)
 	ig := ignore.New(patterns)
 
 	decay := cmd.Bool("decay")
@@ -171,14 +182,14 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 
 	if byDir {
 		dirs := analysis.AnalyzeByDir(scores)
-		if top > 0 && int(top) < len(dirs) {
-			dirs = dirs[:int(top)]
+		if limit > 0 && int(limit) < len(dirs) {
+			dirs = dirs[:int(limit)]
 		}
 		return output.FormatDirs(os.Stdout, dirs, format, metric, decay)
 	}
 
-	if top > 0 && int(top) < len(scores) {
-		scores = scores[:int(top)]
+	if limit > 0 && int(limit) < len(scores) {
+		scores = scores[:int(limit)]
 	}
 	return output.FormatFiles(os.Stdout, scores, format, metric, decay)
 }
@@ -186,6 +197,11 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 func runReport(ctx context.Context, cmd *cli.Command) error {
 	inputPath := cmd.String("input")
 	outputPath := cmd.String("output")
+	upsertPath := cmd.String("upsert")
+
+	if outputPath != "" && upsertPath != "" {
+		return fmt.Errorf("--output and --upsert are mutually exclusive")
+	}
 
 	var input *os.File
 	if inputPath != "" {
@@ -198,7 +214,7 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 	} else {
 		// Hint if stdin is a terminal.
 		if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice != 0 {
-			fmt.Fprintln(os.Stderr, `reading JSON from stdin... (use --input or pipe from "hc analyze --format json")`)
+			fmt.Fprintln(os.Stderr, `reading JSON from stdin... (use --input or pipe from "hc analyze --json")`)
 		}
 		input = os.Stdin
 	}
@@ -208,19 +224,26 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("rendering report: %w", err)
 	}
 
-	if outputPath != "" {
-		if err := report.UpsertFile(outputPath, buf.String()); err != nil {
+	switch {
+	case upsertPath != "":
+		if err := report.UpsertFile(upsertPath, buf.String()); err != nil {
+			return fmt.Errorf("writing output: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "report upserted into %s\n", upsertPath)
+		return nil
+	case outputPath != "":
+		if err := os.WriteFile(outputPath, buf.Bytes(), 0o644); err != nil {
 			return fmt.Errorf("writing output: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "report written to %s\n", outputPath)
 		return nil
+	default:
+		_, err := buf.WriteTo(os.Stdout)
+		return err
 	}
-
-	_, err := buf.WriteTo(os.Stdout)
-	return err
 }
 
-func runPromptIgnoreFileSpec(ctx context.Context, cmd *cli.Command) error {
+func runPromptIgnore(ctx context.Context, cmd *cli.Command) error {
 	path := cmd.Args().First()
 	if path == "" {
 		path = "."
@@ -236,5 +259,5 @@ func runPromptIgnoreFileSpec(ctx context.Context, cmd *cli.Command) error {
 		NoSummary: cmd.Bool("no-summary"),
 	}
 
-	return prompt.RenderIgnoreFileSpec(absPath, os.Stdout, opts)
+	return prompt.RenderIgnore(absPath, os.Stdout, opts)
 }
