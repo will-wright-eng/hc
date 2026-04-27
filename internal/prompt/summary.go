@@ -10,18 +10,12 @@ import (
 	"strings"
 )
 
-// summaryOpts controls what the repo summary includes.
-type summaryOpts struct {
-	MaxFiles int
-}
+// DefaultMaxFiles is the default cap on files collected for the largest-files
+// list. Directory counts and extension histograms always reflect the full repo.
+const DefaultMaxFiles = 200
 
 // writeSummary writes a compact repo summary to w as a fenced text block.
-func writeSummary(root string, w io.Writer, opts summaryOpts) error {
-	maxFiles := opts.MaxFiles
-	if maxFiles <= 0 {
-		maxFiles = 200
-	}
-
+func writeSummary(root string, w io.Writer, maxFiles int) error {
 	var (
 		dirCounts  = make(map[string]int) // relative dir → file count
 		extCounts  = make(map[string]int) // extension → file count
@@ -38,7 +32,7 @@ func writeSummary(root string, w io.Writer, opts summaryOpts) error {
 		rel = filepath.ToSlash(rel)
 
 		// Skip .git directory.
-		if d.IsDir() && (d.Name() == ".git") {
+		if d.IsDir() && d.Name() == ".git" {
 			return filepath.SkipDir
 		}
 
@@ -47,11 +41,8 @@ func writeSummary(root string, w io.Writer, opts summaryOpts) error {
 		}
 
 		totalFiles++
-		if totalFiles > maxFiles {
-			return nil // keep walking for counts but don't collect entries
-		}
 
-		// Directory counts (top 2 levels).
+		// Directory counts (top 2 levels) — always updated, regardless of maxFiles cap.
 		dir := filepath.ToSlash(filepath.Dir(rel))
 		parts := strings.Split(dir, "/")
 		if len(parts) > 2 {
@@ -59,14 +50,18 @@ func writeSummary(root string, w io.Writer, opts summaryOpts) error {
 		}
 		dirCounts[dir]++
 
-		// Extension histogram.
+		// Extension histogram — always updated.
 		ext := filepath.Ext(d.Name())
 		if ext == "" {
 			ext = "(no ext)"
 		}
 		extCounts[ext]++
 
-		// Collect file info for largest-files list.
+		// Collect file info for largest-files list, up to the cap.
+		if totalFiles > maxFiles {
+			return nil
+		}
+
 		info, err := d.Info()
 		if err != nil {
 			return nil
@@ -83,22 +78,18 @@ func writeSummary(root string, w io.Writer, opts summaryOpts) error {
 		return err
 	}
 
-	// 1. Top-level tree (directories with file counts).
 	if err := writeTree(w, dirCounts); err != nil {
 		return err
 	}
 
-	// 2. Extension histogram (top 20).
 	if err := writeExtensions(w, extCounts); err != nil {
 		return err
 	}
 
-	// 3. Largest files (top 15).
 	if err := writeLargestFiles(w, files); err != nil {
 		return err
 	}
 
-	// 4. Notable root files.
 	if err := writeNotableFiles(w, root); err != nil {
 		return err
 	}
@@ -112,7 +103,6 @@ type fileEntry struct {
 	size int64
 }
 
-// writeTree writes directory names with file counts, sorted by count descending.
 func writeTree(w io.Writer, dirCounts map[string]int) error {
 	type dirCount struct {
 		dir   string
@@ -139,7 +129,6 @@ func writeTree(w io.Writer, dirCounts map[string]int) error {
 	return err
 }
 
-// writeExtensions writes the top N extensions by count.
 func writeExtensions(w io.Writer, extCounts map[string]int) error {
 	type extCount struct {
 		ext   string
@@ -168,7 +157,6 @@ func writeExtensions(w io.Writer, extCounts map[string]int) error {
 	return err
 }
 
-// writeLargestFiles writes the top N files by byte size.
 func writeLargestFiles(w io.Writer, files []fileEntry) error {
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].size > files[j].size
@@ -205,7 +193,6 @@ var notableRootFiles = []string{
 	".hcignore",
 }
 
-// writeNotableFiles lists which notable files exist at the repo root.
 func writeNotableFiles(w io.Writer, root string) error {
 	var found []string
 	for _, name := range notableRootFiles {
@@ -228,7 +215,6 @@ func writeNotableFiles(w io.Writer, root string) error {
 	return err
 }
 
-// formatSize formats byte count as a human-readable string.
 func formatSize(b int64) string {
 	switch {
 	case b >= 1<<20:

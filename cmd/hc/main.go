@@ -232,7 +232,7 @@ func runPromptIgnoreFileSpec(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	opts := prompt.IgnoreOpts{
-		MaxFiles:  int(cmd.Int("max-files")),
+		MaxFiles:  cmd.Int("max-files"),
 		NoSummary: cmd.Bool("no-summary"),
 	}
 

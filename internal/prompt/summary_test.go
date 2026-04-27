@@ -52,7 +52,7 @@ func setupFixtureTree(t *testing.T) string {
 func TestWriteSummary_SkipsGitDir(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	if err := writeSummary(root, &buf, summaryOpts{MaxFiles: 200}); err != nil {
+	if err := writeSummary(root, &buf, 200); err != nil {
 		t.Fatal(err)
 	}
 	output := buf.String()
@@ -64,7 +64,7 @@ func TestWriteSummary_SkipsGitDir(t *testing.T) {
 func TestWriteSummary_ContainsFencedBlock(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	if err := writeSummary(root, &buf, summaryOpts{MaxFiles: 200}); err != nil {
+	if err := writeSummary(root, &buf, 200); err != nil {
 		t.Fatal(err)
 	}
 	output := buf.String()
@@ -79,7 +79,7 @@ func TestWriteSummary_ContainsFencedBlock(t *testing.T) {
 func TestWriteSummary_ExtensionHistogram(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	if err := writeSummary(root, &buf, summaryOpts{MaxFiles: 200}); err != nil {
+	if err := writeSummary(root, &buf, 200); err != nil {
 		t.Fatal(err)
 	}
 	output := buf.String()
@@ -91,7 +91,7 @@ func TestWriteSummary_ExtensionHistogram(t *testing.T) {
 func TestWriteSummary_LargestFiles(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	if err := writeSummary(root, &buf, summaryOpts{MaxFiles: 200}); err != nil {
+	if err := writeSummary(root, &buf, 200); err != nil {
 		t.Fatal(err)
 	}
 	output := buf.String()
@@ -103,7 +103,7 @@ func TestWriteSummary_LargestFiles(t *testing.T) {
 func TestWriteSummary_NotableFiles(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	if err := writeSummary(root, &buf, summaryOpts{MaxFiles: 200}); err != nil {
+	if err := writeSummary(root, &buf, 200); err != nil {
 		t.Fatal(err)
 	}
 	output := buf.String()
@@ -118,7 +118,7 @@ func TestWriteSummary_NotableFiles(t *testing.T) {
 func TestWriteSummary_DirectoryTree(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	if err := writeSummary(root, &buf, summaryOpts{MaxFiles: 200}); err != nil {
+	if err := writeSummary(root, &buf, 200); err != nil {
 		t.Fatal(err)
 	}
 	output := buf.String()

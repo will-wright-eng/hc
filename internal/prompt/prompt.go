@@ -21,13 +21,11 @@ func RenderIgnoreFileSpec(root string, w io.Writer, opts IgnoreOpts) error {
 	tmpl := ignoreFileSpecTemplate
 
 	if opts.NoSummary {
-		// Remove the placeholder entirely.
 		tmpl = strings.Replace(tmpl, "{{REPO_SUMMARY}}", "", 1)
 		_, err := io.WriteString(w, tmpl)
 		return err
 	}
 
-	// Split on placeholder so we can inject the summary in the middle.
 	parts := strings.SplitN(tmpl, "{{REPO_SUMMARY}}", 2)
 
 	if _, err := io.WriteString(w, parts[0]); err != nil {
@@ -36,9 +34,9 @@ func RenderIgnoreFileSpec(root string, w io.Writer, opts IgnoreOpts) error {
 
 	maxFiles := opts.MaxFiles
 	if maxFiles <= 0 {
-		maxFiles = 200
+		maxFiles = DefaultMaxFiles
 	}
-	if err := writeSummary(root, w, summaryOpts{MaxFiles: maxFiles}); err != nil {
+	if err := writeSummary(root, w, maxFiles); err != nil {
 		return err
 	}
 
