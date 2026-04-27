@@ -21,17 +21,20 @@ hc analyze -s "6 months" -n 20
 hc analyze -d
 
 # Output as JSON or CSV
-hc analyze -f json
-hc analyze -f csv
+hc analyze --json
+hc analyze -o csv
 
 # Use indentation-based complexity instead of LOC
 hc analyze -i
 
 # Exclude files by pattern (repeatable)
-hc analyze -x "*.pb.go" -x "testdata/**"
+hc analyze -e "*.pb.go" -e "testdata/**"
 
 # Generate a markdown report from JSON output
-hc analyze -f json | hc report -o report.md
+hc analyze --json | hc report -o report.md
+
+# Or upsert into an existing markdown file (preserves surrounding content)
+hc analyze --json | hc report --upsert HOTSPOTS.md
 ```
 
 ### Flags
@@ -42,24 +45,26 @@ hc analyze -f json | hc report -o report.md
 |------|-------|-------------|
 | `--since` | `-s` | Restrict churn window (e.g. "6 months") |
 | `--by-dir` | `-d` | Aggregate results by directory |
-| `--format` | `-f` | Output format: table, json, csv (default: table) |
-| `--top` | `-n` | Limit to top N results |
+| `--output` | `-o` | Output format: table, json, csv (default: table) |
+| `--json` |  | Shortcut for `--output json` |
+| `--limit` | `-n` | Limit to top N results |
 | `--indentation` | `-i` | Use indentation-based complexity instead of LOC |
-| `--ignore` | `-x` | Glob pattern to exclude (repeatable, .gitignore syntax) |
+| `--exclude` | `-e` | Glob pattern to exclude (repeatable, .gitignore syntax) |
 
 #### `report`
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--input` | `-I` | Path to JSON file (default: stdin) |
-| `--output` | `-o` | Markdown file to upsert into (default: stdout) |
+| `--input` | `-i` | Path to JSON file (default: stdin) |
+| `--output` | `-o` | Write report to FILE, overwriting (default: stdout) |
+| `--upsert` |  | Inject report into existing markdown file (preserves surrounding content) |
 
 ### Generating a `.hcignore`
 
-`hc prompt ignore-file-spec` emits an LLM prompt that includes your repo's structure. Pipe it into any LLM CLI to generate a `.hcignore`:
+`hc prompt ignore` emits an LLM prompt that includes your repo's structure. Pipe it into any LLM CLI to generate a `.hcignore`:
 
 ```sh
-hc prompt ignore-file-spec | claude -p > .hcignore
+hc prompt ignore | claude -p > .hcignore
 ```
 
 | Flag | Description |

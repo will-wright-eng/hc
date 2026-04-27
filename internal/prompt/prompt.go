@@ -6,19 +6,19 @@ import (
 	"strings"
 )
 
-//go:embed templates/ignore_file_spec.md
-var ignoreFileSpecTemplate string
+//go:embed templates/ignore.md
+var ignoreTemplate string
 
-// IgnoreOpts configures RenderIgnoreFileSpec output.
+// IgnoreOpts configures RenderIgnore output.
 type IgnoreOpts struct {
 	MaxFiles  int
 	NoSummary bool
 }
 
-// RenderIgnoreFileSpec writes the ignore-file-spec prompt to w,
+// RenderIgnore writes the .hcignore prompt to w,
 // optionally including a repo summary generated from root.
-func RenderIgnoreFileSpec(root string, w io.Writer, opts IgnoreOpts) error {
-	tmpl := ignoreFileSpecTemplate
+func RenderIgnore(root string, w io.Writer, opts IgnoreOpts) error {
+	tmpl := ignoreTemplate
 
 	if opts.NoSummary {
 		tmpl = strings.Replace(tmpl, "{{REPO_SUMMARY}}", "", 1)

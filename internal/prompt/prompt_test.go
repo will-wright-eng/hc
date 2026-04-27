@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-func TestRenderIgnoreFileSpec_ContainsSyntaxRules(t *testing.T) {
+func TestRenderIgnore_ContainsSyntaxRules(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	err := RenderIgnoreFileSpec(root, &buf, IgnoreOpts{})
+	err := RenderIgnore(root, &buf, IgnoreOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,10 +29,10 @@ func TestRenderIgnoreFileSpec_ContainsSyntaxRules(t *testing.T) {
 	}
 }
 
-func TestRenderIgnoreFileSpec_NoSummary(t *testing.T) {
+func TestRenderIgnore_NoSummary(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	err := RenderIgnoreFileSpec(root, &buf, IgnoreOpts{NoSummary: true})
+	err := RenderIgnore(root, &buf, IgnoreOpts{NoSummary: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,10 +49,10 @@ func TestRenderIgnoreFileSpec_NoSummary(t *testing.T) {
 	}
 }
 
-func TestRenderIgnoreFileSpec_MaxFiles(t *testing.T) {
+func TestRenderIgnore_MaxFiles(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	err := RenderIgnoreFileSpec(root, &buf, IgnoreOpts{MaxFiles: 5})
+	err := RenderIgnore(root, &buf, IgnoreOpts{MaxFiles: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,10 +62,10 @@ func TestRenderIgnoreFileSpec_MaxFiles(t *testing.T) {
 	}
 }
 
-func TestRenderIgnoreFileSpec_NoPlaceholderRemains(t *testing.T) {
+func TestRenderIgnore_NoPlaceholderRemains(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	err := RenderIgnoreFileSpec(root, &buf, IgnoreOpts{})
+	err := RenderIgnore(root, &buf, IgnoreOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
