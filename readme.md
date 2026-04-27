@@ -53,3 +53,16 @@ hc analyze -f json | hc report -o report.md
 |------|-------|-------------|
 | `--input` | `-I` | Path to JSON file (default: stdin) |
 | `--output` | `-o` | Markdown file to upsert into (default: stdout) |
+
+### Generating a `.hcignore`
+
+`hc prompt ignore-file-spec` emits an LLM prompt that includes your repo's structure. Pipe it into any LLM CLI to generate a `.hcignore`:
+
+```sh
+hc prompt ignore-file-spec | claude -p > .hcignore
+```
+
+| Flag | Description |
+|------|-------------|
+| `--max-files` | Cap file listing in repo summary (default: 200) |
+| `--no-summary` | Omit the repo summary from the prompt |

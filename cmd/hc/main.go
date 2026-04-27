@@ -13,6 +13,7 @@ import (
 	gitpkg "github.com/will/hc/internal/git"
 	"github.com/will/hc/internal/ignore"
 	"github.com/will/hc/internal/output"
+	"github.com/will/hc/internal/prompt"
 	"github.com/will/hc/internal/report"
 )
 
@@ -86,6 +87,29 @@ func main() {
 					},
 				},
 				Action: runReport,
+			},
+			{
+				Name:  "prompt",
+				Usage: "Generate LLM prompts for hc workflows",
+				Commands: []*cli.Command{
+					{
+						Name:      "ignore-file-spec",
+						Usage:     "Emit a prompt that asks an LLM to generate a .hcignore file",
+						ArgsUsage: "[path]",
+						Flags: []cli.Flag{
+							&cli.IntFlag{
+								Name:  "max-files",
+								Usage: "Cap file listing in repo summary",
+								Value: 200,
+							},
+							&cli.BoolFlag{
+								Name:  "no-summary",
+								Usage: "Omit the repo summary from the prompt",
+							},
+						},
+						Action: runPromptIgnoreFileSpec,
+					},
+				},
 			},
 		},
 	}
@@ -194,4 +218,23 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 
 	_, err := buf.WriteTo(os.Stdout)
 	return err
+}
+
+func runPromptIgnoreFileSpec(ctx context.Context, cmd *cli.Command) error {
+	path := cmd.Args().First()
+	if path == "" {
+		path = "."
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolving path: %w", err)
+	}
+
+	opts := prompt.IgnoreOpts{
+		MaxFiles:  int(cmd.Int("max-files")),
+		NoSummary: cmd.Bool("no-summary"),
+	}
+
+	return prompt.RenderIgnoreFileSpec(absPath, os.Stdout, opts)
 }
