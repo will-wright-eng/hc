@@ -14,9 +14,9 @@ The five renames, in the suggested commit order:
 | 5 | subcommand | `prompt ignore-file-spec` | `prompt ignore` |
 | 8 | `analyze` flag | `--top` (long form only) | `--limit` |
 
-#11 is a rename **paired with a behavior change**: the upsert behavior moves to `--upsert`, and `--output FILE` is added with the standard "write to file, overwriting" semantics. Both parts ship in one commit.
+# 11 is a rename **paired with a behavior change**: the upsert behavior moves to `--upsert`, and `--output FILE` is added with the standard "write to file, overwriting" semantics. Both parts ship in one commit
 
-#8 is marked optional in the design doc; included here for completeness but can be deferred.
+# 8 is marked optional in the design doc; included here for completeness but can be deferred
 
 ---
 
@@ -25,6 +25,7 @@ The five renames, in the suggested commit order:
 **In scope.** Flag/command names visible to users, their `--help` strings, internal Go identifiers that mirror the CLI surface, tests that reference them, the readme flag table, and the Makefile `e2e` target.
 
 **Out of scope.**
+
 - The `--decay` collapse (#4) — not a rename, lives in its own plan.
 - The `--by-dir` → `--by KEY` change (#7) — boolean→enum, not a rename.
 - Default action (#1) — separate plan.

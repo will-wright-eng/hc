@@ -153,7 +153,7 @@ Matches `git log --since`. Use the same parser semantics — relative durations,
 
 **Convention.**
 
-- `--color=auto|always|never` plus respect for `NO_COLOR` env var (https://no-color.org).
+- `--color=auto|always|never` plus respect for `NO_COLOR` env var (<https://no-color.org>).
 - `-v, --verbose` and `-q, --quiet` for log volume.
 - TTY detection: when stdout is not a terminal, suppress the "reading JSON from stdin..." hint and any color codes. The `report` command already does the TTY check; analyze should too.
 
