@@ -52,7 +52,7 @@ func analyzeFlags(hidden bool) []cli.Flag {
 		},
 		&cli.BoolFlag{
 			Name:   "json",
-			Usage:  "Shortcut for --output json",
+			Usage:  "Shortcut for --output json (cannot combine with --output)",
 			Hidden: hidden,
 		},
 		&cli.StringSliceFlag{
@@ -158,6 +158,9 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	since := cmd.String("since")
 	format := cmd.String("output")
 	if cmd.Bool("json") {
+		if cmd.IsSet("output") && format != "json" {
+			return fmt.Errorf("--json conflicts with --output %s (use one)", format)
+		}
 		format = "json"
 	}
 	byDir := cmd.Bool("by-dir")

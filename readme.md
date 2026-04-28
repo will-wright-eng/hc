@@ -48,7 +48,7 @@ hc analyze --json | hc report --upsert HOTSPOTS.md
 | `--since` | `-s` | Restrict churn window (e.g. "6 months") |
 | `--by-dir` | `-d` | Aggregate results by directory |
 | `--output` | `-o` | Output format: table, json, csv (default: table) |
-| `--json` |  | Shortcut for `--output json` |
+| `--json` |  | Shortcut for `--output json`. Cannot combine with `--output`. |
 | `--exclude` | `-e` | Glob pattern to exclude (repeatable, .gitignore syntax) |
 | `--no-decay` |  | Disable recency weighting (use raw commit counts) |
 
