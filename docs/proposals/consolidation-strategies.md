@@ -189,11 +189,10 @@ Hierarchical agglomerative clustering on (weighted commits, complexity) vectors,
 
 An earlier draft proposed `hc analyze | hc filter | hc report` as a three-stage pipeline. Rejected for several reasons:
 
-1. **`analyze` isn't actually bloated.** Eight flags, ~55 lines of `runAnalyze` action body, three-line shaping postlude. The "mixing two concerns" framing overstates a small amount of glue.
-2. **Reverses recently-shipped directions.** `cli-ergonomics.md` #1 makes the bare `hc` form the headline path; `dir-level.md` puts `-L` on analyze and anticipates `--by file|dir|author` there too. Pulling `--by-dir` / `--limit` into a separate command undoes that.
+1. **`analyze` isn't actually bloated.** Seven flags, ~50 lines of `runAnalyze` action body. The "mixing two concerns" framing overstates a small amount of glue — and once `--limit` was removed, the only shaping left in analyze is `--by-dir` / `-L`, which are aggregation knobs, not truncation.
+2. **Reverses recently-shipped directions.** `cli-ergonomics.md` #1 makes the bare `hc` form the headline path; `dir-level.md` puts `-L` on analyze and anticipates `--by file|dir|author` there too. Pulling `--by-dir` into a separate command undoes that.
 3. **JSON schema becomes a public contract.** Three commands communicating via JSON means `FileScore` / `DirScore` shape becomes harder to evolve. Today it's an internal handshake between two callers in the same binary.
-4. **`report` already filters.** It truncates per-quadrant during rendering, so "rendering is pure" was never the existing model. Adding a third stage doesn't fix that.
-5. **Pipeline composability is preserved.** `hc analyze --strategy hybrid --json | jq` works today's way; users who want filtering between stages can already pipe through `jq`.
+4. **Pipeline composability is preserved.** `hc analyze --strategy hybrid --json | jq` works today's way; users who want filtering between stages can already pipe through `jq`.
 
 The library extraction is the load-bearing idea. The new top-level command was extra surface for marginal benefit.
 
@@ -204,16 +203,15 @@ The library extraction is the load-bearing idea. The new top-level command was e
 ### Phase 1 — Library + simplest strategies
 
 - Create `internal/filter` with `Strategy` interface and shared `Entry` type.
-- Implement `top` and `quadrant` (lowest algorithmic cost).
-- Add `--strategy` and `--budget` flags to `analyzeFlags()`. Default unset; current behavior preserved.
-- `--strategy` and `--limit` are mutually exclusive (error on conflict, mirroring `--json`/`--output`).
+- Implement `top` and `quadrant` (lowest algorithmic cost). `top` directly replaces the ergonomics of the recently-removed `--limit` flag, with a remainder summary instead of silent truncation.
+- Add `--strategy` and `--budget` flags to `analyzeFlags()`. Default unset; analyze emits every classified entry as it does today.
 - Tests: unit tests in `internal/filter`; one CLI-level test that `--strategy top --budget 5` produces 5 entries.
 
 ### Phase 2 — Tree-based strategies
 
 - Implement `rollup`, `outliers`, `hybrid`.
+- Promote `hybrid` to the default `--strategy` once it's been exercised on real repos. This is the point where unset-by-default flips to hybrid-by-default, restoring sane out-of-the-box behavior on large repos that lost it when `--limit` and the report-side truncation were removed.
 - Document `hybrid` as the recommended choice for large repos in README.
-- Consider auto-applying `hybrid` when input exceeds a threshold (e.g. >200 files) and no explicit `--strategy` / `--limit` is given. Behind a flag at first; promote to default if it proves robust.
 
 ### Phase 3 — Clustering (optional)
 
@@ -233,11 +231,11 @@ Five strategies (six counting cluster) is a lot to surface.
 
 **Mitigation:** Most users never set `--strategy`. When they do, `hybrid` is the recommended starting point. The others are documented for advanced use.
 
-### `--strategy` vs `--limit` interaction
+### Output size regression until Phase 2
 
-Both shape output size; both can't apply at once.
+Removing `--limit` and the report-side truncation before the strategies land means `hc` on a large repo currently produces a very long table or report. Users who relied on `--limit` have nothing equivalent until Phase 1 ships `top`.
 
-**Mitigation:** Reject the combination at parse time with a clear error: `--strategy and --limit conflict (use one)`. Mirrors the `--json` / `--output` conflict pattern.
+**Mitigation:** Ship Phase 1 (`top` + `quadrant`) close behind the `--limit` removal. Document in the README that `--strategy top --budget 20` is the replacement for the old `--limit 20`. Keep Phase 2 (and the `hybrid` default) on a short timeline so the out-of-the-box experience on large repos returns to something usable.
 
 ### Mixed-granularity output
 
@@ -256,5 +254,7 @@ Strategies like `hybrid` emit files and directories in the same list. Renderers 
 ## History
 
 This proposal was originally drafted as a three-stage `analyze | filter | report` pipeline with `hc filter` as a new top-level command. The user pushed back on whether `analyze` was actually bloated enough to justify the split; on review the bloat case was thin and the new command reversed several directions already shipped or planned in `cli-ergonomics.md` and `dir-level.md`. The current version preserves the algorithmic substance (strategy interface, six consolidation strategies) and drops the architectural framing (third pipeline stage, JSON-as-public-contract).
+
+After the architectural pivot, `--limit` and the per-quadrant truncation in `report` were removed in advance of this proposal landing. Both were workarounds for the missing strategy layer; deleting them clears the path for the strategies to own consolidation cleanly, at the cost of a short window where output size is uncapped until Phase 1 ships.
 
 `hc filter` as a top-level verb stays on the table as Phase 4 if the library proves valuable and a "filter saved JSON" use case emerges.
