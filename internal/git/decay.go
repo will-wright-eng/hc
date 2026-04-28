@@ -23,6 +23,25 @@ func DecayWeight(commitTime, now time.Time, halfLifeDays float64) float64 {
 	return math.Exp(-lambda * ageDays)
 }
 
+// defaultHalfLifeDays returns now - oldestCommit, in days.
+// Returns 0 if commits is empty or every commit is at/after now.
+func defaultHalfLifeDays(commits []commitInfo, now time.Time) float64 {
+	var oldest time.Time
+	for _, c := range commits {
+		if oldest.IsZero() || c.Date.Before(oldest) {
+			oldest = c.Date
+		}
+	}
+	if oldest.IsZero() {
+		return 0
+	}
+	days := now.Sub(oldest).Hours() / 24
+	if days <= 0 {
+		return 0
+	}
+	return days
+}
+
 // ParseHalfLife converts a human-readable duration string (e.g. "90 days",
 // "6 months", "1 year") into a number of days. Returns 0 if the string is empty.
 func ParseHalfLife(s string) (float64, error) {

@@ -29,7 +29,7 @@ type commitInfo struct {
 // Log runs git log and returns per-file churn data.
 // repoPath is the root of the git repository.
 // since is an optional time window (e.g. "6 months") passed to --since.
-func Log(repoPath string, since string, ig *ignore.Matcher, halfLifeDays float64) ([]FileChurn, error) {
+func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileChurn, error) {
 	commitFiles, err := gitLogFiles(repoPath, since)
 	if err != nil {
 		return nil, err
@@ -52,6 +52,10 @@ func Log(repoPath string, since string, ig *ignore.Matcher, halfLifeDays float64
 	}
 
 	now := time.Now()
+	var halfLifeDays float64
+	if decay {
+		halfLifeDays = defaultHalfLifeDays(commitFiles, now)
+	}
 
 	// Build raw churn map (no ignore filtering yet — need resolved paths first).
 	raw := make(map[string]*stats)
