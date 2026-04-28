@@ -1,3 +1,32 @@
-*.md
+# Dependencies
+.venv/
+__pycache__/
+
+# Lockfiles
+go.sum
+
+# Generated
+hc
+**/*.pyc
+
+# Caches
+.ruff_cache/
+tmp/
+
+# Tests
 **/*_test.go
+testdata/
+
+# Docs
+**/*.md
+docs/
+
+# Build / CI / tooling
 Makefile
+Dockerfile
+.github/
+.pre-commit-config.yaml
+.golangci.yaml
+.golangci.yml
+*.yaml
+*.yml

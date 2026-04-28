@@ -18,3 +18,5 @@ hc
 Thumbs.db
 
 .claude/
+tmp/
+__pycache__/

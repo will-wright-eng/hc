@@ -25,3 +25,6 @@ lint: ## run linting
 
 e2e: ## run e2e tests with decay, indentation, and report
 	./hc analyze --json | ./hc report
+
+eval-ignore: ## eval `hc prompt ignore | claude -p` coverage (TRIALS=N, OUTDIR=path)
+	uv run --script $(REPO_ROOT)/scripts/eval_ignore_prompt.py -n 5 -o /tmp/eval-ignore/
