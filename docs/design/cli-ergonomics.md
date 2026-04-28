@@ -75,15 +75,17 @@ This frees `-f` for a more natural use later (e.g., `--from FILE` for a saved an
 
 **Convention.** GNU long options support optional values: `--decay[=HALFLIFE]`. `git log --since` takes a value; there is no separate `--enable-since`. `grep --color[=WHEN]` uses optional values for exactly this case.
 
-**Recommendation.** Collapse into one flag:
+**Recommendation.** Collapse into a single opt-out flag with adaptive defaults:
 
 ```
---decay                # turn on with default half-life
---decay=6mo            # turn on with custom half-life
---decay 90d            # same, separated form
+(no flag)              # decay on, half-life adapts to the analyzed window
+--no-decay             # disable; use raw commit counts
+--since "6 months"     # narrows the window, which shortens the half-life
 ```
 
-Keep the default of `6 months`. Drop `--decay-half-life` entirely. This also removes the need for the `-D` short flag (see #2), since users either accept the default or pass a value.
+Decay is always on. The half-life derives from the age of the oldest commit in scope, so narrowing `--since` automatically tightens recency weighting — no separate half-life knob needed. This also removes the `-D` short flag entirely (see #2).
+
+**Note on what shipped.** An earlier draft proposed `--decay[=HALFLIFE]` (GNU optional-value style). The implementation went further: rather than ask the user to pick a half-life, derive it from `--since`. Result is one flag (`--no-decay`) instead of two, with no value to tune.
 
 ---
 
@@ -197,9 +199,8 @@ hc prompt ignore [path] [flags]
 hc prompt <other-prompts> ...
 
 Common flags on analyze:
-  -s, --since DURATION         Restrict churn window
-      --decay[=HALFLIFE]       Weight commits by recency (default: 6mo)
-  -i, --indentation            Use indentation depth instead of LOC
+  -s, --since DURATION         Restrict churn window (also shortens decay half-life)
+      --no-decay               Disable recency weighting (default: on, adaptive half-life)
   -e, --exclude PATTERN        Exclude pattern (repeatable)
       --by file|dir|author     Grouping mode (default: file)
   -n, --limit N                Top N results
@@ -288,7 +289,7 @@ Useful for batching commits — each category is roughly one PR's worth of mecha
 
 #### Collapses (one knob where there were two)
 
-- #4 `--decay` + `--decay-half-life` → `--decay[=HALFLIFE]`
+- #4 `--decay` + `--decay-half-life` → `--no-decay` (decay always on; half-life derived from `--since` window)
 - #7 `--by-dir` boolean → `--by KEY` enum
 
 #### Behavior changes (semantics shift)

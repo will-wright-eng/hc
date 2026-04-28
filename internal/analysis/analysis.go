@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/will-wright-eng/hc/internal/complexity"
 	"github.com/will-wright-eng/hc/internal/git"
@@ -114,7 +115,16 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 }
 
 // AnalyzeByDir aggregates file scores into directory-level results.
-func AnalyzeByDir(fileScores []FileScore) []DirScore {
+//
+// level controls how deeply paths are rolled up:
+//
+//	level < 0  → no cap; group by each file's full parent directory (default).
+//	level == 0 → single bucket; everything aggregates into "." (whole-repo summary).
+//	level > 0  → truncate each directory to N path segments before grouping.
+//
+// Files shallower than level keep their natural depth (no padding); files
+// deeper than level are truncated. Mirrors `tree -L N` semantics.
+func AnalyzeByDir(fileScores []FileScore, level int) []DirScore {
 	type dirAgg struct {
 		files                int
 		totalLines           int
@@ -125,7 +135,7 @@ func AnalyzeByDir(fileScores []FileScore) []DirScore {
 
 	m := make(map[string]*dirAgg)
 	for _, fs := range fileScores {
-		dir := dirOf(fs.Path)
+		dir := capDepth(dirOf(fs.Path), level)
 		agg, ok := m[dir]
 		if !ok {
 			agg = &dirAgg{}
@@ -279,4 +289,18 @@ func dirOf(path string) string {
 		}
 	}
 	return "."
+}
+
+func capDepth(dir string, level int) string {
+	if level < 0 || dir == "." {
+		return dir
+	}
+	if level == 0 {
+		return "."
+	}
+	parts := strings.Split(dir, "/")
+	if len(parts) > level {
+		parts = parts[:level]
+	}
+	return strings.Join(parts, "/")
 }
