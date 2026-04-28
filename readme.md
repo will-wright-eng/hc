@@ -49,7 +49,6 @@ hc analyze --json | hc report --upsert HOTSPOTS.md
 | `--by-dir` | `-d` | Aggregate results by directory |
 | `--output` | `-o` | Output format: table, json, csv (default: table) |
 | `--json` |  | Shortcut for `--output json` |
-| `--limit` | `-n` | Limit to top N results |
 | `--exclude` | `-e` | Glob pattern to exclude (repeatable, .gitignore syntax) |
 | `--no-decay` |  | Disable recency weighting (use raw commit counts) |
 

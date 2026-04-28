@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-const maxPerQuadrant = 15
-
 // fileEntry is the local struct for decoding analyze JSON output.
 type fileEntry struct {
 	Path            string  `json:"path"`
@@ -166,13 +164,7 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 			sb.WriteString("|------|---------|-------|------------|--------|\n")
 		}
 
-		rendered := items
-		overflow := 0
-		if len(rendered) > maxPerQuadrant {
-			overflow = len(rendered) - maxPerQuadrant
-			rendered = rendered[:maxPerQuadrant]
-		}
-		for _, e := range rendered {
+		for _, e := range items {
 			if hasDecay {
 				sb.WriteString(fmt.Sprintf("| %s | %d | %.1f | %d | %d | %d |\n",
 					e.Path, e.Commits, e.WeightedCommits, e.Lines, e.Complexity, e.Authors))
@@ -180,9 +172,6 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 				sb.WriteString(fmt.Sprintf("| %s | %d | %d | %d | %d |\n",
 					e.Path, e.Commits, e.Lines, e.Complexity, e.Authors))
 			}
-		}
-		if overflow > 0 {
-			sb.WriteString(fmt.Sprintf("\n*(...and %d more)*\n", overflow))
 		}
 	}
 
@@ -251,13 +240,7 @@ func renderDirs(w io.Writer, entries []dirEntry) error {
 			sb.WriteString("|------|-------|---------------|-------------|------------------|\n")
 		}
 
-		rendered := items
-		overflow := 0
-		if len(rendered) > maxPerQuadrant {
-			overflow = len(rendered) - maxPerQuadrant
-			rendered = rendered[:maxPerQuadrant]
-		}
-		for _, e := range rendered {
+		for _, e := range items {
 			if hasDecay {
 				sb.WriteString(fmt.Sprintf("| %s | %d | %d | %.1f | %d | %d |\n",
 					e.Path, e.Files, e.TotalCommits, e.TotalWeightedCommits, e.TotalLines, e.TotalComplexity))
@@ -265,9 +248,6 @@ func renderDirs(w io.Writer, entries []dirEntry) error {
 				sb.WriteString(fmt.Sprintf("| %s | %d | %d | %d | %d |\n",
 					e.Path, e.Files, e.TotalCommits, e.TotalLines, e.TotalComplexity))
 			}
-		}
-		if overflow > 0 {
-			sb.WriteString(fmt.Sprintf("\n*(...and %d more)*\n", overflow))
 		}
 	}
 
