@@ -35,6 +35,14 @@ func analyzeFlags(hidden bool) []cli.Flag {
 			Usage:   "Aggregate results by directory",
 			Hidden:  hidden,
 		},
+		&cli.IntFlag{
+			Name:        "level",
+			Aliases:     []string{"L"},
+			Usage:       "Cap directory aggregation depth (implies --by-dir; 0 = single bucket)",
+			Value:       -1,
+			HideDefault: true,
+			Hidden:      hidden,
+		},
 		&cli.StringFlag{
 			Name:    "output",
 			Aliases: []string{"o"},
@@ -161,6 +169,15 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	byDir := cmd.Bool("by-dir")
 	limit := cmd.Int("limit")
 
+	level := -1
+	if cmd.IsSet("level") {
+		level = int(cmd.Int("level"))
+		if level < 0 {
+			return fmt.Errorf("--level must be >= 0")
+		}
+		byDir = true
+	}
+
 	patterns, err := ignore.LoadFile(filepath.Join(absPath, ".hcignore"))
 	if err != nil {
 		return fmt.Errorf("reading .hcignore: %w", err)
@@ -183,7 +200,7 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	scores := analysis.Analyze(churns, complexities)
 
 	if byDir {
-		dirs := analysis.AnalyzeByDir(scores)
+		dirs := analysis.AnalyzeByDir(scores, level)
 		if limit > 0 && int(limit) < len(dirs) {
 			dirs = dirs[:int(limit)]
 		}
