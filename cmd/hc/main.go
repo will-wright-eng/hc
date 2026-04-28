@@ -102,6 +102,10 @@ func main() {
 						Name:  "upsert",
 						Usage: "Inject report into existing markdown file (preserves surrounding content)",
 					},
+					&cli.BoolFlag{
+						Name:  "collapsible",
+						Usage: "Wrap hotspot categories in a <details> block so they collapse in HTML-rendering markdown viewers",
+					},
 				},
 				Action: runReport,
 			},
@@ -228,7 +232,7 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	var buf bytes.Buffer
-	if err := report.Render(input, &buf); err != nil {
+	if err := report.Render(input, &buf, cmd.Bool("collapsible")); err != nil {
 		return fmt.Errorf("rendering report: %w", err)
 	}
 

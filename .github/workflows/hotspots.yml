@@ -1,0 +1,42 @@
+name: hotspots
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to comment on
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  hotspots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build hc
+        run: make build
+
+      - name: Analyze repository
+        run: ./hc analyze --json > hotspots.json
+
+      - name: Render report
+        run: ./hc report --collapsible --input hotspots.json --output report.md
+
+      - name: Post report to PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: ./scripts/post-pr-comment.sh report.md hc-hotspots
