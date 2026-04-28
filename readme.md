@@ -55,6 +55,7 @@ hc analyze --json | hc report --upsert HOTSPOTS.md
 | `--limit` | `-n` | Limit to top N results |
 | `--indentation` | `-i` | Use indentation-based complexity instead of LOC |
 | `--exclude` | `-e` | Glob pattern to exclude (repeatable, .gitignore syntax) |
+| `--no-decay` |  | Disable recency weighting (use raw commit counts) |
 
 #### `report`
 

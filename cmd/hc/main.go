@@ -57,14 +57,8 @@ func analyzeFlags() []cli.Flag {
 			Usage:   "Glob pattern to exclude (repeatable, .gitignore syntax)",
 		},
 		&cli.BoolFlag{
-			Name:    "decay",
-			Aliases: []string{"D"},
-			Usage:   "Weight commits by recency (exponential decay)",
-		},
-		&cli.StringFlag{
-			Name:  "decay-half-life",
-			Usage: "Half-life for decay weighting (e.g. \"90 days\", \"6 months\")",
-			Value: "6 months",
+			Name:  "no-decay",
+			Usage: "Disable recency weighting (use raw commit counts)",
 		},
 	}
 }
@@ -174,16 +168,9 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	patterns = append(patterns, cmd.StringSlice("exclude")...)
 	ig := ignore.New(patterns)
 
-	decay := cmd.Bool("decay")
-	var halfLifeDays float64
-	if decay {
-		halfLifeDays, err = gitpkg.ParseHalfLife(cmd.String("decay-half-life"))
-		if err != nil {
-			return fmt.Errorf("parsing decay half-life: %w", err)
-		}
-	}
+	decay := !cmd.Bool("no-decay")
 
-	churns, err := gitpkg.Log(absPath, since, ig, halfLifeDays)
+	churns, err := gitpkg.Log(absPath, since, ig, decay)
 	if err != nil {
 		return fmt.Errorf("reading git history: %w", err)
 	}

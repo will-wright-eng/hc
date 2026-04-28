@@ -51,6 +51,36 @@ func TestDecayWeight_FutureCommit(t *testing.T) {
 	}
 }
 
+func TestDefaultHalfLifeDays(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		commits []commitInfo
+		want    float64
+	}{
+		{"empty", nil, 0},
+		{"single commit today", []commitInfo{{Date: now}}, 0},
+		{"single commit 30 days ago", []commitInfo{{Date: now.AddDate(0, 0, -30)}}, 30},
+		{"future-only commits", []commitInfo{{Date: now.AddDate(0, 0, 1)}}, 0},
+		{
+			name: "mixed past and future, picks oldest past",
+			commits: []commitInfo{
+				{Date: now.AddDate(0, 0, 1)},
+				{Date: now.AddDate(0, 0, -90)},
+				{Date: now.AddDate(0, 0, -10)},
+			},
+			want: 90,
+		},
+	}
+	for _, tt := range tests {
+		got := defaultHalfLifeDays(tt.commits, now)
+		if math.Abs(got-tt.want) > 0.001 {
+			t.Errorf("%s: got %f, want %f", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestParseHalfLife(t *testing.T) {
 	tests := []struct {
 		input string

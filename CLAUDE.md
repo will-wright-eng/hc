@@ -20,9 +20,10 @@ make e2e            # Run e2e: analyze with decay+indentation piped to report
 go test -v -run TestAnalyze_QuadrantClassification ./internal/analysis/
 
 # Run the tool — `hc [path]` is sugar for `hc analyze [path]`
-./hc                                              # analyze cwd (default)
+./hc                                              # analyze cwd (default; decay on)
 ./hc --since "6 months" --limit 20 --json --by-dir
-./hc analyze -D -i --json | ./hc report           # decay + indentation → markdown report
+./hc --no-decay                                   # raw commit counts, no recency weighting
+./hc analyze -i --json | ./hc report              # indentation complexity → markdown report
 ./hc analyze --json | ./hc report --upsert HOTSPOTS.md  # inject into existing markdown
 ./hc prompt ignore | claude -p > .hcignore        # generate a .hcignore via LLM
 ```
@@ -52,7 +53,7 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 - **Quadrant priority order**: HotCritical → HotSimple → ColdComplex → ColdSimple, then by weighted commits descending.
 - **Deleted files** (in git history but not on disk) are excluded from results.
 - **Directory mode** (`--by-dir/-d`) aggregates file scores into `[]DirScore` with summed metrics.
-- **Decay** (`--decay/-D`): exponential decay weighting on commits; configurable half-life via `--decay-half-life` (default "6 months").
+- **Decay**: commits are weighted by recency by default; half-life adapts to the analyzed window (= age of oldest commit in scope). Use `--no-decay` for raw commit counts. Narrow the window via `--since` to shorten the half-life.
 - **Complexity metrics**: LOC (default) or indentation depth (`--indentation/-i`).
 - **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json`.
 - **Limit** (`--limit/-n`): cap result count.
@@ -63,4 +64,4 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 
 ## Pending design work
 
-`docs/design/cli-ergonomics.md` is the source of truth for in-flight CLI changes. Tier 1 has one item left: collapse `--decay` + `--decay-half-life` into a single `--decay[=HALFLIFE]` flag (#4). Tier 2 and Tier 3 items are not yet started.
+`docs/design/cli-ergonomics.md` is the source of truth for in-flight CLI changes. Tier 1 is complete. Remaining: Tier 2 #7 (`--by-dir` boolean → `--by KEY` enum) and Tier 3 polish (#10 `--color`/`-v`/`-q`, #9, #12 docs).
