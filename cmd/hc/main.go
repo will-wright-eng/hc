@@ -19,41 +19,50 @@ import (
 
 // analyzeFlags returns a fresh slice each call. urfave/cli mutates flag state
 // during parse, so root and subcommand must not share the same flag pointers.
-func analyzeFlags() []cli.Flag {
+// When hidden is true, flags still parse but are omitted from --help; used on
+// the root command so `hc --help` doesn't list analyze-only options as global.
+func analyzeFlags(hidden bool) []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:    "since",
 			Aliases: []string{"s"},
 			Usage:   "Restrict churn window (e.g. \"6 months\")",
+			Hidden:  hidden,
 		},
 		&cli.BoolFlag{
 			Name:    "by-dir",
 			Aliases: []string{"d"},
 			Usage:   "Aggregate results by directory",
+			Hidden:  hidden,
 		},
 		&cli.StringFlag{
 			Name:    "output",
 			Aliases: []string{"o"},
 			Usage:   "Output format: table, json, csv",
 			Value:   "table",
+			Hidden:  hidden,
 		},
 		&cli.BoolFlag{
-			Name:  "json",
-			Usage: "Shortcut for --output json",
+			Name:   "json",
+			Usage:  "Shortcut for --output json",
+			Hidden: hidden,
 		},
 		&cli.IntFlag{
 			Name:    "limit",
 			Aliases: []string{"n"},
 			Usage:   "Limit to top N results",
+			Hidden:  hidden,
 		},
 		&cli.StringSliceFlag{
 			Name:    "exclude",
 			Aliases: []string{"e"},
 			Usage:   "Glob pattern to exclude (repeatable, .gitignore syntax)",
+			Hidden:  hidden,
 		},
 		&cli.BoolFlag{
-			Name:  "no-decay",
-			Usage: "Disable recency weighting (use raw commit counts)",
+			Name:   "no-decay",
+			Usage:  "Disable recency weighting (use raw commit counts)",
+			Hidden: hidden,
 		},
 	}
 }
@@ -63,14 +72,14 @@ func main() {
 		Name:      "hc",
 		Usage:     "Hot/Cold codebase analysis — churn × complexity hotspot matrix",
 		ArgsUsage: "[path]",
-		Flags:     analyzeFlags(),
+		Flags:     analyzeFlags(true),
 		Action:    runAnalyze,
 		Commands: []*cli.Command{
 			{
 				Name:      "analyze",
 				Usage:     "Analyze a git repository for hotspots",
 				ArgsUsage: "[path]",
-				Flags:     analyzeFlags(),
+				Flags:     analyzeFlags(false),
 				Action:    runAnalyze,
 			},
 			{
