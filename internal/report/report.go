@@ -19,7 +19,6 @@ type fileEntry struct {
 	Complexity      int     `json:"complexity"`
 	Authors         int     `json:"authors"`
 	Quadrant        string  `json:"quadrant"`
-	Metric          string  `json:"metric"`
 }
 
 // dirEntry is the local struct for decoding directory-level analyze JSON output.
@@ -31,7 +30,6 @@ type dirEntry struct {
 	TotalLines           int     `json:"total_lines"`
 	TotalComplexity      int     `json:"total_complexity"`
 	Quadrant             string  `json:"quadrant"`
-	Metric               string  `json:"metric"`
 }
 
 type quadrantInfo struct {
@@ -111,12 +109,6 @@ func isDirJSON(data []byte) bool {
 }
 
 func renderFiles(w io.Writer, entries []fileEntry) error {
-	metric := "loc"
-	if len(entries) > 0 && entries[0].Metric != "" {
-		metric = entries[0].Metric
-	}
-
-	// Detect decay: if any entry has a non-zero weighted score, show the column.
 	hasDecay := false
 	for _, e := range entries {
 		if e.WeightedCommits > 0 {
@@ -133,10 +125,9 @@ func renderFiles(w io.Writer, entries []fileEntry) error {
 	var sb strings.Builder
 	sb.WriteString(MarkerStart + "\n")
 	sb.WriteString("## Codebase Hotspot Analysis\n\n")
-	sb.WriteString(fmt.Sprintf(
-		"This analysis classifies files into a 2x2 matrix of **churn** (commit frequency)\n"+
-			"x **complexity** (structural size), identifying where development effort concentrates\n"+
-			"and where risk accumulates. Complexity metric: **%s**.\n", metric))
+	sb.WriteString("This analysis classifies files into a 2x2 matrix of **churn** (commit frequency)\n" +
+		"x **complexity** (structural size), identifying where development effort concentrates\n" +
+		"and where risk accumulates.\n")
 
 	hotCritical := len(grouped["hot-critical"])
 	coldComplex := len(grouped["cold-complex"])
@@ -224,11 +215,6 @@ func pluralNoun(n int, singular, pluralForm string) string {
 }
 
 func renderDirs(w io.Writer, entries []dirEntry) error {
-	metric := "loc"
-	if len(entries) > 0 && entries[0].Metric != "" {
-		metric = entries[0].Metric
-	}
-
 	hasDecay := false
 	for _, e := range entries {
 		if e.TotalWeightedCommits > 0 {
@@ -245,10 +231,9 @@ func renderDirs(w io.Writer, entries []dirEntry) error {
 	var sb strings.Builder
 	sb.WriteString(MarkerStart + "\n")
 	sb.WriteString("## Codebase Hotspot Analysis (by directory)\n\n")
-	sb.WriteString(fmt.Sprintf(
-		"This analysis classifies directories into a 2x2 matrix of **churn** (commit frequency)\n"+
-			"x **complexity** (structural size), identifying where development effort concentrates\n"+
-			"and where risk accumulates. Complexity metric: **%s**.\n", metric))
+	sb.WriteString("This analysis classifies directories into a 2x2 matrix of **churn** (commit frequency)\n" +
+		"x **complexity** (structural size), identifying where development effort concentrates\n" +
+		"and where risk accumulates.\n")
 
 	for _, q := range quadrantOrder {
 		items := grouped[q.Key]

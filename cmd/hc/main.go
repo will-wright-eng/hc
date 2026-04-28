@@ -46,11 +46,6 @@ func analyzeFlags() []cli.Flag {
 			Aliases: []string{"n"},
 			Usage:   "Limit to top N results",
 		},
-		&cli.BoolFlag{
-			Name:    "indentation",
-			Aliases: []string{"i"},
-			Usage:   "Use indentation-based complexity instead of LOC",
-		},
 		&cli.StringSliceFlag{
 			Name:    "exclude",
 			Aliases: []string{"e"},
@@ -156,10 +151,6 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	}
 	byDir := cmd.Bool("by-dir")
 	limit := cmd.Int("limit")
-	metric := "loc"
-	if cmd.Bool("indentation") {
-		metric = "indentation"
-	}
 
 	patterns, err := ignore.LoadFile(filepath.Join(absPath, ".hcignore"))
 	if err != nil {
@@ -175,7 +166,7 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("reading git history: %w", err)
 	}
 
-	complexities, err := complexity.Walk(absPath, metric, ig)
+	complexities, err := complexity.Walk(absPath, ig)
 	if err != nil {
 		return fmt.Errorf("analyzing file complexity: %w", err)
 	}
@@ -187,13 +178,13 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		if limit > 0 && int(limit) < len(dirs) {
 			dirs = dirs[:int(limit)]
 		}
-		return output.FormatDirs(os.Stdout, dirs, format, metric, decay)
+		return output.FormatDirs(os.Stdout, dirs, format, decay)
 	}
 
 	if limit > 0 && int(limit) < len(scores) {
 		scores = scores[:int(limit)]
 	}
-	return output.FormatFiles(os.Stdout, scores, format, metric, decay)
+	return output.FormatFiles(os.Stdout, scores, format, decay)
 }
 
 func runReport(ctx context.Context, cmd *cli.Command) error {

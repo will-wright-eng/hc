@@ -18,7 +18,7 @@ func sampleScores() []analysis.FileScore {
 
 func TestFormatFilesTable(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "table", "loc", false)
+	err := FormatFiles(&buf, sampleScores(), "table", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestFormatFilesTable(t *testing.T) {
 
 func TestFormatFilesJSON(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "json", "loc", false)
+	err := FormatFiles(&buf, sampleScores(), "json", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestFormatFilesJSON(t *testing.T) {
 
 func TestFormatFilesCSV(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "csv", "loc", false)
+	err := FormatFiles(&buf, sampleScores(), "csv", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestFormatDirsTable(t *testing.T) {
 		{Path: "src", Files: 5, TotalCommits: 100, TotalLines: 2000, TotalComplexity: 2000, Quadrant: analysis.HotCritical},
 	}
 	var buf bytes.Buffer
-	err := FormatDirs(&buf, dirs, "table", "loc", false)
+	err := FormatDirs(&buf, dirs, "table", false)
 	if err != nil {
 		t.Fatal(err)
 	}

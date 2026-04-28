@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestCountLines(t *testing.T) {
+func TestScanFile(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "test.go")
 	content := `package main
@@ -20,7 +20,7 @@ func main() {
 `
 	os.WriteFile(f, []byte(content), 0644)
 
-	lines, err := countLines(f)
+	lines, _, err := scanFile(f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestWalk(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("hello\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "photo.png"), []byte("not source"), 0644)
 
-	results, err := Walk(dir, "loc", nil)
+	results, err := Walk(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

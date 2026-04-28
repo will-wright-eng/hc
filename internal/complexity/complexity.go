@@ -1,7 +1,6 @@
 package complexity
 
 import (
-	"bufio"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,15 +11,13 @@ import (
 // FileComplexity represents static analysis for a single file.
 type FileComplexity struct {
 	Path       string
-	Lines      int
-	Complexity int // indent sum when metric=indentation, same as Lines when metric=loc
+	Lines      int // non-blank, non-comment lines
+	Complexity int // indent-sum across the same lines
 }
 
-// Walk traverses the file tree at root and counts non-blank, non-comment lines
-// for each file. It skips hidden directories and common non-source directories.
-// The metric parameter controls how Complexity is populated: "loc" mirrors Lines,
-// "indentation" uses indent-sum scoring.
-func Walk(root string, metric string, ig *ignore.Matcher) ([]FileComplexity, error) {
+// Walk traverses the file tree at root and computes per-file line count and
+// indent-sum complexity. It skips hidden and common non-source directories.
+func Walk(root string, ig *ignore.Matcher) ([]FileComplexity, error) {
 	var results []FileComplexity
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -49,23 +46,16 @@ func Walk(root string, metric string, ig *ignore.Matcher) ([]FileComplexity, err
 			return nil
 		}
 
-		lines, err := countLines(path)
+		lines, indentSum, err := scanFile(path)
 		if err != nil {
 			return nil // skip files we can't read
 		}
 
 		if lines > 0 {
-			comp := lines
-			if metric == "indentation" {
-				indentSum, err := IndentSum(path)
-				if err == nil {
-					comp = indentSum
-				}
-			}
 			results = append(results, FileComplexity{
 				Path:       rel,
 				Lines:      lines,
-				Complexity: comp,
+				Complexity: indentSum,
 			})
 		}
 		return nil
@@ -112,30 +102,6 @@ func isSourceFile(name string) bool {
 		return true
 	}
 	return false
-}
-
-// countLines counts non-blank lines in a file.
-// It makes a best-effort attempt to skip single-line comments for common styles.
-func countLines(path string) (int, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-
-	count := 0
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		if isCommentLine(line) {
-			continue
-		}
-		count++
-	}
-	return count, scanner.Err()
 }
 
 func isCommentLine(line string) bool {

@@ -29,9 +29,6 @@ hc -d
 hc --json
 hc -o csv
 
-# Use indentation-based complexity instead of LOC
-hc -i
-
 # Exclude files by pattern (repeatable)
 hc -e "*.pb.go" -e "testdata/**"
 
@@ -53,7 +50,6 @@ hc analyze --json | hc report --upsert HOTSPOTS.md
 | `--output` | `-o` | Output format: table, json, csv (default: table) |
 | `--json` |  | Shortcut for `--output json` |
 | `--limit` | `-n` | Limit to top N results |
-| `--indentation` | `-i` | Use indentation-based complexity instead of LOC |
 | `--exclude` | `-e` | Glob pattern to exclude (repeatable, .gitignore syntax) |
 | `--no-decay` |  | Disable recency weighting (use raw commit counts) |
 
