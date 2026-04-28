@@ -2,7 +2,12 @@ name: hotspots
 
 on:
   pull_request:
-  push: # testing only
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to comment on
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -27,19 +32,11 @@ jobs:
         run: ./hc analyze --json > hotspots.json
 
       - name: Render report
-        run: ./hc report --input hotspots.json --output report.md
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: hotspots
-          path: |
-            hotspots.json
-            report.md
+        run: ./hc report --collapsible --input hotspots.json --output report.md
 
       - name: Post report to PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: ./scripts/post-pr-comment.sh report.md hc-hotspots
