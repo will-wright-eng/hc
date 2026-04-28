@@ -21,7 +21,7 @@ go test -v -run TestAnalyze_QuadrantClassification ./internal/analysis/
 
 # Run the tool — `hc [path]` is sugar for `hc analyze [path]`
 ./hc                                                    # analyze cwd (default; decay on)
-./hc --since "6 months" --limit 20 --json --by-dir
+./hc --since "6 months" --json --by-dir
 ./hc --no-decay                                         # raw commit counts, no recency weighting
 ./hc analyze --json | ./hc report                       # JSON pipeline → markdown report (e.g. HOTSPOTS.md)
 ./hc analyze --json | ./hc report --upsert AGENTS.md    # inject into existing markdown (e.g. AGENTS.md)
@@ -57,7 +57,6 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 - **Decay**: commits are weighted by recency by default; half-life adapts to the analyzed window (= age of oldest commit in scope). Use `--no-decay` for raw commit counts. Narrow the window via `--since` to shorten the half-life.
 - **Complexity metric**: indent-sum (always). Each non-blank, non-comment line contributes its indent depth; classification thresholds are the median of indent-sum across files. LOC is still computed and shown as a display column but does not drive classification.
 - **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json`.
-- **Limit** (`--limit/-n`): cap result count.
 - **Exclude patterns** (`--exclude/-e`): repeatable flag, plus `.hcignore` file support.
 - **Report writes**: `hc report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.

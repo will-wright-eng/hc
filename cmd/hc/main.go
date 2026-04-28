@@ -55,12 +55,6 @@ func analyzeFlags(hidden bool) []cli.Flag {
 			Usage:  "Shortcut for --output json",
 			Hidden: hidden,
 		},
-		&cli.IntFlag{
-			Name:    "limit",
-			Aliases: []string{"n"},
-			Usage:   "Limit to top N results",
-			Hidden:  hidden,
-		},
 		&cli.StringSliceFlag{
 			Name:    "exclude",
 			Aliases: []string{"e"},
@@ -167,7 +161,6 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		format = "json"
 	}
 	byDir := cmd.Bool("by-dir")
-	limit := cmd.Int("limit")
 
 	level := -1
 	if cmd.IsSet("level") {
@@ -201,15 +194,9 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 
 	if byDir {
 		dirs := analysis.AnalyzeByDir(scores, level)
-		if limit > 0 && int(limit) < len(dirs) {
-			dirs = dirs[:int(limit)]
-		}
 		return output.FormatDirs(os.Stdout, dirs, format, decay)
 	}
 
-	if limit > 0 && int(limit) < len(scores) {
-		scores = scores[:int(limit)]
-	}
 	return output.FormatFiles(os.Stdout, scores, format, decay)
 }
 

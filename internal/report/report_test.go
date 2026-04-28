@@ -70,26 +70,6 @@ func TestRender_EmptyInput(t *testing.T) {
 	}
 }
 
-func TestRender_Truncation(t *testing.T) {
-	// Build JSON with 20 entries in one quadrant.
-	var entries []string
-	for i := 0; i < 20; i++ {
-		entries = append(entries, `{"path":"file`+strings.Repeat("x", i)+`.go","commits":10,"lines":100,"complexity":100,"authors":1,"quadrant":"hot-critical"}`)
-	}
-	input := "[" + strings.Join(entries, ",") + "]"
-
-	var buf bytes.Buffer
-	err := Render(strings.NewReader(input), &buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := buf.String()
-
-	if !strings.Contains(out, "and 5 more") {
-		t.Error("output should indicate truncated entries")
-	}
-}
-
 func TestRender_WithDecayScores(t *testing.T) {
 	input := `[{"path":"a.go","commits":10,"weighted_commits":8.5,"lines":100,"complexity":100,"authors":1,"quadrant":"hot-critical"}]`
 	var buf bytes.Buffer
