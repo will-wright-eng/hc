@@ -20,12 +20,12 @@ make e2e            # Run e2e: analyze with decay+indentation piped to report
 go test -v -run TestAnalyze_QuadrantClassification ./internal/analysis/
 
 # Run the tool — `hc [path]` is sugar for `hc analyze [path]`
-./hc                                              # analyze cwd (default; decay on)
+./hc                                                    # analyze cwd (default; decay on)
 ./hc --since "6 months" --limit 20 --json --by-dir
-./hc --no-decay                                   # raw commit counts, no recency weighting
-./hc analyze --json | ./hc report                 # JSON pipeline → markdown report
-./hc analyze --json | ./hc report --upsert HOTSPOTS.md  # inject into existing markdown
-./hc prompt ignore | claude -p > .hcignore        # generate a .hcignore via LLM
+./hc --no-decay                                         # raw commit counts, no recency weighting
+./hc analyze --json | ./hc report                       # JSON pipeline → markdown report (e.g. HOTSPOTS.md)
+./hc analyze --json | ./hc report --upsert AGENTS.md    # inject into existing markdown (e.g. AGENTS.md)
+./hc prompt ignore | claude -p > .hcignore              # generate a .hcignore via LLM
 ```
 
 Pre-commit hooks are configured (.pre-commit-config.yaml): go-fmt, go-vet, go-build, go-mod-tidy, golangci-lint, markdownlint.
@@ -34,7 +34,7 @@ Pre-commit hooks are configured (.pre-commit-config.yaml): go-fmt, go-vet, go-bu
 
 Pipeline: **git history → complexity scan → classification → output** (+ optional report rendering)
 
-```
+```text
 cmd/hc/main.go          CLI entry (urfave/cli v3). Subcommands: analyze, report, prompt.
                         Root command shares analyze's flags + Action via analyzeFlags()
                         helper, so bare `hc [flags] [path]` is sugar for `hc analyze ...`.
@@ -62,9 +62,3 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 - **Report writes**: `hc report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.
 - Only dependency beyond stdlib is `github.com/urfave/cli/v3`.
-
-## Pending design work
-
-`docs/design/cli-ergonomics.md` is the source of truth for in-flight CLI changes. Tier 1 is complete. Remaining: Tier 2 #7 (`--by-dir` boolean → `--by KEY` enum) and Tier 3 polish (#10 `--color`/`-v`/`-q`, #9, #12 docs).
-
-A separate proposal (`docs/proposals/cli-default-indentation.md`) removes the `--indentation` flag and makes indent-sum the only complexity metric.
