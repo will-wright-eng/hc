@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -16,15 +16,25 @@ repos:
       - id: go-mod-tidy
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.1.5
+    rev: v2.11.4
     hooks:
       - id: golangci-lint
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.44.0
+    rev: v0.48.0
     hooks:
       - id: markdownlint
         args:
         - --fix
         verbose: true
         entry: bash -c 'markdownlint "$@" || true' --
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.15.12
+    hooks:
+      # Run the linter.
+      - id: ruff-check
+        args: [ --fix ]
+      # Run the formatter.
+      - id: ruff-format
