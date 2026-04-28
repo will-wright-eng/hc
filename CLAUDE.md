@@ -56,7 +56,7 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 - **Directory mode** (`--by-dir/-d`) aggregates file scores into `[]DirScore` with summed metrics.
 - **Decay**: commits are weighted by recency by default; half-life adapts to the analyzed window (= age of oldest commit in scope). Use `--no-decay` for raw commit counts. Narrow the window via `--since` to shorten the half-life.
 - **Complexity metric**: indent-sum (always). Each non-blank, non-comment line contributes its indent depth; classification thresholds are the median of indent-sum across files. LOC is still computed and shown as a display column but does not drive classification.
-- **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json`.
+- **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json` and cannot be combined with `--output <non-json>` (returns an error).
 - **Exclude patterns** (`--exclude/-e`): repeatable flag, plus `.hcignore` file support.
 - **Report writes**: `hc report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.
