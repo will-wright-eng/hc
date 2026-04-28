@@ -103,12 +103,12 @@ func TestDetectIndentUnit(t *testing.T) {
 	}
 }
 
-func TestWalk_IndentationMetric(t *testing.T) {
+func TestWalk_IndentSumComplexity(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "deep.go"), []byte("func f() {\n    if true {\n        x()\n    }\n}\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "flat.go"), []byte("package flat\nvar x = 1\nvar y = 2\n"), 0644)
 
-	results, err := Walk(dir, "indentation", nil)
+	results, err := Walk(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,8 +124,7 @@ func TestWalk_IndentationMetric(t *testing.T) {
 	if deep.Complexity <= flat.Complexity {
 		t.Errorf("deep.go complexity (%d) should exceed flat.go (%d)", deep.Complexity, flat.Complexity)
 	}
-	// Lines should still be populated
 	if deep.Lines == 0 || flat.Lines == 0 {
-		t.Error("Lines should be populated regardless of metric")
+		t.Error("Lines should always be populated alongside Complexity")
 	}
 }

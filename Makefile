@@ -24,4 +24,4 @@ lint: ## run linting
 	go vet $(REPO_ROOT)/...
 
 e2e: ## run e2e tests with decay, indentation, and report
-	./hc analyze -i --json | ./hc report
+	./hc analyze --json | ./hc report

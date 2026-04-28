@@ -6,41 +6,47 @@ import (
 	"strings"
 )
 
-// IndentSum computes the sum of indent levels across all non-blank, non-comment
-// lines in a file. The indent unit is detected per-file by scanning leading
-// whitespace deltas. This serves as a language-agnostic proxy for nesting complexity.
-func IndentSum(path string) (int, error) {
+// scanFile reads a file once and returns the count of non-blank, non-comment
+// lines along with the sum of their indent levels. Indent unit is detected
+// per-file by scanning leading-whitespace deltas.
+func scanFile(path string) (lines, indentSum int, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer f.Close()
 
-	var lines []string
+	var raw []string
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		raw = append(raw, scanner.Text())
 	}
 	if err := scanner.Err(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	useTabs := detectIndentChar(lines)
+	useTabs := detectIndentChar(raw)
 	indentUnit := 1
 	if !useTabs {
-		indentUnit = detectIndentUnit(lines)
+		indentUnit = detectIndentUnit(raw)
 	}
 
-	sum := 0
-	for _, line := range lines {
+	for _, line := range raw {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || isCommentLine(trimmed) {
 			continue
 		}
-		level := indentLevel(line, useTabs, indentUnit)
-		sum += level
+		lines++
+		indentSum += indentLevel(line, useTabs, indentUnit)
 	}
-	return sum, nil
+	return lines, indentSum, nil
+}
+
+// IndentSum returns the indent-sum complexity for a single file.
+// Retained for direct tests and external callers.
+func IndentSum(path string) (int, error) {
+	_, sum, err := scanFile(path)
+	return sum, err
 }
 
 // detectIndentChar returns true if the file predominantly uses tabs for indentation.
