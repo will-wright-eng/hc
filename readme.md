@@ -60,6 +60,17 @@ hc analyze --json | hc report --upsert HOTSPOTS.md
 | `--output` | `-o` | Write report to FILE, overwriting (default: stdout) |
 | `--upsert` |  | Inject report into existing markdown file (preserves surrounding content) |
 
+### GitHub Actions
+
+Run `hc` on every PR and post a sticky comment with the report. See [`.github/workflows/hotspots.yml`](.github/workflows/hotspots.yml) for a working example — it builds `hc`, analyzes the repo, renders a collapsible markdown report, and upserts a comment on the PR via [`scripts/post-pr-comment.sh`](scripts/post-pr-comment.sh).
+
+```yaml
+- run: ./hc analyze --json > hotspots.json
+- run: ./hc report --collapsible --input hotspots.json --output report.md
+```
+
+Requires `pull-requests: write` permission so the workflow can comment.
+
 ### Generating a `.hcignore`
 
 `hc prompt ignore` emits an LLM prompt that includes your repo's structure. Pipe it into any LLM CLI to generate a `.hcignore`:
