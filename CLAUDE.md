@@ -23,7 +23,7 @@ go test -v -run TestAnalyze_QuadrantClassification ./internal/analysis/
 ./hc                                              # analyze cwd (default; decay on)
 ./hc --since "6 months" --limit 20 --json --by-dir
 ./hc --no-decay                                   # raw commit counts, no recency weighting
-./hc analyze -i --json | ./hc report              # indentation complexity → markdown report
+./hc analyze --json | ./hc report                 # JSON pipeline → markdown report
 ./hc analyze --json | ./hc report --upsert HOTSPOTS.md  # inject into existing markdown
 ./hc prompt ignore | claude -p > .hcignore        # generate a .hcignore via LLM
 ```
@@ -42,7 +42,8 @@ internal/git/            Parses git log → []FileChurn {Path, Commits, Weighted
                          Supports decay weighting (decay.go) and rename tracking (rename.go)
 internal/complexity/     Walks file tree, counts LOC or indentation depth → []FileComplexity {Path, Lines}
 internal/analysis/       Merges on path, median-split thresholds, classifies → []FileScore
-internal/output/         Formats results as table/JSON/CSV (adds SCORE column when decay enabled)
+internal/output/         Formats results as table/JSON/CSV (LINES + COMPLEXITY columns;
+                         adds SCORE column when decay enabled)
 internal/ignore/         Gitignore-style pattern matching; loads .hcignore files
 internal/report/         Renders analysis JSON as markdown; report.UpsertFile injects into
                          existing markdown via marker comments
@@ -54,7 +55,7 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 - **Deleted files** (in git history but not on disk) are excluded from results.
 - **Directory mode** (`--by-dir/-d`) aggregates file scores into `[]DirScore` with summed metrics.
 - **Decay**: commits are weighted by recency by default; half-life adapts to the analyzed window (= age of oldest commit in scope). Use `--no-decay` for raw commit counts. Narrow the window via `--since` to shorten the half-life.
-- **Complexity metrics**: LOC (default) or indentation depth (`--indentation/-i`).
+- **Complexity metric**: indent-sum (always). Each non-blank, non-comment line contributes its indent depth; classification thresholds are the median of indent-sum across files. LOC is still computed and shown as a display column but does not drive classification.
 - **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json`.
 - **Limit** (`--limit/-n`): cap result count.
 - **Exclude patterns** (`--exclude/-e`): repeatable flag, plus `.hcignore` file support.
@@ -65,3 +66,5 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 ## Pending design work
 
 `docs/design/cli-ergonomics.md` is the source of truth for in-flight CLI changes. Tier 1 is complete. Remaining: Tier 2 #7 (`--by-dir` boolean → `--by KEY` enum) and Tier 3 polish (#10 `--color`/`-v`/`-q`, #9, #12 docs).
+
+A separate proposal (`docs/proposals/cli-default-indentation.md`) removes the `--indentation` flag and makes indent-sum the only complexity metric.
