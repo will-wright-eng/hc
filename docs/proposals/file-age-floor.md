@@ -28,7 +28,16 @@ This is the simplest correct behavior. It deliberately drops information — a 5
 
 When `--since` is set to **30 days or less**, the floor disables automatically. A 14-day floor inside a 14-day window produces empty output; a 14-day floor inside a 30-day window leaves only ~16 days of "old enough" history to classify against, which is too thin for the median-split to be meaningful. 30 days is the smallest window where the floor still leaves room for signal, so below that we drop it rather than producing degenerate results.
 
-This is silent — no warning, no flag interaction. The user wrote `--since "2 weeks"` because they want to look at the last two weeks; honoring that is more useful than printing a lecture.
+A one-line stderr note announces the auto-disable (e.g. `age floor disabled: --since window ≤ 30d`). Not a warning, not a lecture — just enough that two runs differing only in `--since` don't produce mysteriously different file sets.
+
+#### Parsing `--since` for the auto-disable check
+
+`--since` is passed verbatim to `git log`, which accepts a much wider grammar than the existing `git.ParseHalfLife` (day/month/year). The verification cases below include `--since "2 weeks"` and `--since "1 week"`, so at minimum the parser must understand `week`. The plan:
+
+1. Extend `git.ParseHalfLife` to accept `hour`, `week` (and their plurals) alongside the existing units. Cheap, mechanical, and useful for half-life parsing in its own right.
+2. For values it still can't parse (`"yesterday"`, `"last Tuesday"`, absolute dates), **leave the floor on**. This is the conservative choice: the floor's behavior on a parseable narrow window is predictable, and the alternative (silently disabling on any string we don't recognize) is the worse failure mode.
+
+The auto-disable lives in `cmd/hc/main.go` next to flag parsing: try to parse `--since`; if parsed and ≤ 30 days, set the effective floor to zero before handing off to analysis.
 
 ### CLI surface
 
@@ -42,14 +51,16 @@ Mirrors `--no-decay`. No duration argument, no other variants.
 
 ### Pipeline placement
 
-The age data lives in `internal/git`: `FileChurn` gains a `FirstSeen time.Time` field, populated from the earliest commit touching each path during `git.Log`. Rename tracking already merges churn across renames; `FirstSeen` should follow the same path, taking the earliest first-seen across the merged ancestry.
+The age data lives in `internal/git`: `FileChurn` gains a `FirstSeen time.Time` field, populated from the earliest commit touching each path during `git.Log`. The merge step that already collapses stats across renames (the loop in `git.go:Log` that rewrites the `raw` map's keys through `renames.Resolve` and folds entries into `m`) gains one more line: `FirstSeen = min(existing.FirstSeen, s.FirstSeen)`. `rename.go` itself is unchanged — it only resolves chains; the per-stat merge has always lived in `git.go`.
 
-`FileScore` carries `FirstSeen` forward (not a derived `Age`, since age depends on when you ask). Filtering happens in `internal/analysis` after classification, before output. Two reasons to filter post-classification rather than pre:
+`FileScore` carries `FirstSeen` forward (not a derived `Age`, since age depends on when you ask). Filtering happens inside `analysis.Analyze` via a new `minAge time.Duration` parameter (zero disables), applied after classification and before the result is returned. Two reasons to filter post-classification rather than pre:
 
 1. The median computation should reflect the whole repository's distribution, not just files older than the floor. Filtering pre-classification would shift thresholds in a way that depends on how many young files exist, which is noisy.
 2. Carrying `FirstSeen` on `FileScore` lets downstream consumers — including the future "new & complex" callout — read it without re-deriving from raw churn data.
 
-The auto-disable check sits in `cmd/hc/main.go` next to flag parsing: if `--since` parses to ≤ 30 days, set the effective floor to zero before handing off to analysis.
+Doing the filter inside `Analyze` (rather than in `runAnalyze` after the call) means `AnalyzeByDir` automatically gets the cleaned set: young files don't pollute directory aggregates without any extra plumbing.
+
+The auto-disable check sits in `cmd/hc/main.go` next to flag parsing: if `--since` parses to ≤ 30 days, set the effective `minAge` to zero before handing off to analysis.
 
 ---
 
@@ -58,11 +69,12 @@ The auto-disable check sits in `cmd/hc/main.go` next to flag parsing: if `--sinc
 **In scope.**
 
 - Add `FirstSeen time.Time` to `git.FileChurn`, populated during `git.Log`.
-- Carry `FirstSeen` through rename merging in `internal/git/rename.go`.
+- Take the earliest `FirstSeen` across the rename-merge step in `git.go:Log` (the existing per-stat merge loop, not `rename.go`).
 - Add `FirstSeen time.Time` to `analysis.FileScore`.
+- Add a `minAge time.Duration` parameter to `analysis.Analyze`; filter young files post-classification when it's non-zero.
 - Add `--no-min-age` flag to `analyzeFlags()`.
-- Auto-disable the floor when `--since` ≤ 30 days.
-- Filter young files out of analysis output post-classification.
+- Extend `git.ParseHalfLife` to accept `hour` and `week` so the auto-disable check can parse `--since "2 weeks"`.
+- Auto-disable the floor when `--since` parses to ≤ 30 days; emit a one-line stderr note when it triggers.
 - Update `CLAUDE.md` and `readme.md`.
 
 **Out of scope.**
@@ -76,11 +88,13 @@ The auto-disable check sits in `cmd/hc/main.go` next to flag parsing: if `--sinc
 
 ## Touch Points
 
-- `internal/git/git.go` — `FileChurn` gets `FirstSeen`; `Log` records earliest commit date per path.
-- `internal/git/rename.go` — merge `FirstSeen` (take the earliest) when collapsing renamed paths.
-- `internal/analysis/` — `FileScore` gets `FirstSeen`; add a post-classification filter step that drops files with `now - FirstSeen < 14 days`, gated on the effective-floor flag.
-- `cmd/hc/main.go` (`analyzeFlags`, `runAnalyze`) — add `--no-min-age`; compute effective floor (zero if `--no-min-age` or `--since` ≤ 30 days, else 14 days); pass into analysis.
+- `internal/git/git.go` — `FileChurn` gets `FirstSeen`; `Log` records the earliest commit date per path during the raw-stats build, and the existing rename-merge loop folds `FirstSeen` with `min(...)` when collapsing renamed paths.
+- `internal/git/decay.go` — extend `ParseHalfLife` to accept `hour` and `week` (and plurals).
+- `internal/analysis/analysis.go` — `FileScore` gets `FirstSeen`; `Analyze` gains a `minAge time.Duration` parameter and drops files with `now - FirstSeen < minAge` after classification (zero disables).
+- `cmd/hc/main.go` (`analyzeFlags`, `runAnalyze`) — add `--no-min-age`; compute effective `minAge` (zero if `--no-min-age` is set, or if `--since` parses to ≤ 30 days; else 14 days); pass into `analysis.Analyze`. Print the one-line stderr note when auto-disable fires.
 - `CLAUDE.md`, `readme.md` — document the floor, the flag, and the auto-disable rule.
+
+`internal/git/rename.go` is intentionally unchanged: it resolves rename chains, but the per-file stats merge has always lived in `git.go`, which is where the new `FirstSeen` reduction belongs.
 
 ---
 
@@ -90,7 +104,8 @@ The auto-disable check sits in `cmd/hc/main.go` next to flag parsing: if `--sinc
 - **`--no-min-age`**: floor disabled; behavior identical to today.
 - **`--since` ≤ 30 days**: floor auto-disabled; equivalent to `--no-min-age` for that run.
 - **Renamed files**: `FirstSeen` is the earliest first-seen across the merged rename chain, so a long-lived file renamed last week is not treated as new.
-- **`--since` between 30 days and 14 days of floor**: floor active. A file's `FirstSeen` is bounded by the window, so a long-lived file whose first in-window commit happens to be 10 days ago is treated as new and excluded. This is the honest limitation: `--since` defines what "exists" for analysis, and we don't run a second unbounded `git log` to recover true first-seen. Users who hit this can drop `--since` or pass `--no-min-age`. Revisit if it shows up in practice.
+- **Files with no in-window commits**: not present in `commitFiles`, so their `FileChurn` entry is empty and `FirstSeen` is the zero value (`time.Time{}`). `now - zero` is ~2026 years, well above any floor — these files pass through cleanly. Only files that actually have commits in the window are candidates for exclusion.
+- **`--since` between the auto-disable threshold and full history**: this is the real failure mode. Because `FirstSeen` is computed only from in-window commits, a long-lived file whose first *in-window* commit happens to be 10 days ago is treated as new and excluded — even though it's been in the repo for years. On `--since "3 months"` this isn't rare. Users who hit this can drop `--since` or pass `--no-min-age`. The proper fix is sketched below as a Phase 2 follow-up; calling this out as an honest limitation rather than ignoring it.
 
 ---
 
@@ -117,7 +132,9 @@ A young, complex, actively-developed file is exactly the kind of thing a reviewe
 
 ## Follow-up
 
-A "new & complex" report section that consumes `FirstSeen` from `FileScore` and surfaces excluded files that would otherwise be notable (long, deeply indented, multi-author). Composes with the consolidation strategies in `consolidation-strategies.md`. Out of scope here; this proposal lays the data plumbing.
+**Phase 2 — true first-seen for `--since` runs.** The window-bounded `FirstSeen` is correct for unbounded runs and wrong for narrow ones. Fix: for the candidate set of files that *would* be excluded (in-window first commit < 14 days old), run a second, unbounded `git log --diff-filter=A --format=%cI -- <path> | head -1` to recover the true creation date. This is one extra `git log` per candidate, and the candidate set is small by construction (only files with very recent in-window first-touches qualify). Cheap; eliminates the edge case described in [Edge Cases](#edge-cases). Defer until Phase 1 ships and the false-exclusion rate is measurable.
+
+**Phase 3 — "new & complex" report section.** Consumes `FirstSeen` from `FileScore` and surfaces excluded files that would otherwise be notable (long, deeply indented, multi-author). Composes with the consolidation strategies in `consolidation-strategies.md`. Out of scope here; this proposal lays the data plumbing.
 
 ---
 
