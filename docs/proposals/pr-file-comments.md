@@ -49,12 +49,20 @@ The action is a thin shell pipeline on top of existing tools:
 
 3. **Filter** to the intersection of (changed files) × (ColdComplex ∪ HotCritical)
    using `jq`.
-4. **Post inline review comments** via `gh api repos/{owner}/{repo}/pulls/{n}/comments`:
+4. **Post file-level review comments** via
+   `gh api repos/{owner}/{repo}/pulls/{n}/comments` with
+   `subject_type=file` (anchors the comment to the file in the Files
+   Changed tab without requiring a specific line number):
    - `path` = file path
-   - `line` = first changed line from the patch (must exist in the diff,
-     otherwise the API rejects the comment)
+   - `commit_id` = PR HEAD SHA
+   - `subject_type` = `"file"`
    - `body` = quadrant-specific message (markdown, includes a footer tag
-     like `<!-- hc-pr-comment:ColdComplex -->` for idempotency)
+     like `<!-- hc-pr-comment:{path} -->` for idempotency)
+
+   > **TODO (v2):** target a specific diff-hunk line
+   > (`subject_type=line`) for more precise placement. Requires parsing
+   > `git diff` hunks, handling pure-deletion changes, renames, and
+   > files deleted by the PR. See *Future Work* below.
 
 No new `hc` functionality is required — `git diff --name-only`, `jq`, and
 `gh api` cover it. Keep the door open for a `--paths` filter later (see
@@ -116,26 +124,19 @@ jobs:
 
 ## Idempotency
 
-PRs get re-pushed; we don't want N copies of the same comment. Two options:
+PRs get re-pushed; we don't want N copies of the same comment. Each
+comment body ends with a hidden tag `<!-- hc-pr-comment:{path} -->`.
+Before posting, list existing PR review comments via `gh api` and skip
+if a matching tag is already present.
 
-1. **Tag-and-skip** (simpler): each comment body ends with a hidden tag
-   `<!-- hc-pr-comment:{quadrant}:{path} -->`. Before posting, list existing
-   PR review comments via `gh api` and skip if a matching tag is already
-   present.
-2. **Tag-and-replace**: same tag, but delete the old comment and post fresh.
-   Useful if quadrant changes between pushes.
-
-Start with option 1 (skip). Comments don't need to update on re-pushes —
-the guidance is the same.
+Keying on path (not quadrant) means a file that moves quadrants between
+pushes won't produce a duplicate — the original comment stays. Acceptable
+for v1; revisit if quadrant churn turns out to be common in practice.
 
 ---
 
 ## Open Questions
 
-- **Line targeting:** first changed line is the simplest choice but may
-  feel arbitrary. Alternatives: the file's "hotspot region" (most-churned
-  hunk) or a file-level comment via the issues API instead of the
-  pulls/comments API. First-changed-line is the v1 default.
 - **Threshold tuning:** ColdComplex is currently defined by median split.
   On a small repo this can flag a lot of files. Consider a minimum
   complexity floor (e.g. only flag if `lines > 200` *and* ColdComplex) to
@@ -148,8 +149,29 @@ the guidance is the same.
 
 ---
 
+## Known Limitations (accepted for v1)
+
+- **Fork PRs:** `GITHUB_TOKEN` is read-only on PRs from forks, so the
+  workflow can run analysis but not post inline comments. Same gap as
+  the existing `hotspots.yml`. Accepted as-is — revisit if external
+  contributors become a meaningful share of PRs.
+- **PR-introduced new files are excluded from analysis:** the 14-day
+  file-age floor (see CLAUDE.md / `docs/proposals/file-age-floor.md`)
+  drops files whose first commit is recent, so net-new files in a PR
+  won't get hotspot comments. This also sidesteps any concern about
+  the PR's own commits shifting median-split classifications — those
+  files aren't classified at all.
+
+---
+
 ## Future Work (defer until v1 ships)
 
+- **Line-level comment targeting** — anchor each comment to a specific
+  diff hunk line (`subject_type=line`) instead of the whole file.
+  Better signal-to-noise when only a small region is touched. Requires
+  parsing `git diff` hunks (not just `--name-only`), handling
+  pure-deletion changes, renames, and files deleted by the PR. Defer
+  until the file-level v1 is dogfooded.
 - **`hc analyze --paths file1,file2`** — let the workflow ask `hc` to score
   only the changed files. Cleaner than `jq`-filtering after the fact and
   faster on large repos.
