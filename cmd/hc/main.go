@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/urfave/cli/v3"
 	"github.com/will-wright-eng/hc/internal/analysis"
@@ -15,6 +16,15 @@ import (
 	"github.com/will-wright-eng/hc/internal/output"
 	"github.com/will-wright-eng/hc/internal/prompt"
 	"github.com/will-wright-eng/hc/internal/report"
+)
+
+// defaultMinAge is the file age floor: files younger than this are excluded
+// from analysis output. Auto-disables on narrow --since windows; opt out
+// explicitly with --no-min-age.
+const (
+	defaultMinAge       = 14 * 24 * time.Hour
+	autoDisableMinAge   = 30 * 24 * time.Hour
+	autoDisableNoteText = "age floor disabled: --since window ≤ 30d"
 )
 
 // analyzeFlags returns a fresh slice each call. urfave/cli mutates flag state
@@ -66,7 +76,37 @@ func analyzeFlags(hidden bool) []cli.Flag {
 			Usage:  "Disable recency weighting (use raw commit counts)",
 			Hidden: hidden,
 		},
+		&cli.BoolFlag{
+			Name:   "no-min-age",
+			Usage:  "Disable the 14-day file age floor",
+			Hidden: hidden,
+		},
 	}
+}
+
+// effectiveMinAge resolves the file age floor for an analyze run. Returns
+// the duration to apply (zero means disabled), and whether the auto-disable
+// rule fired (caller emits a stderr note for transparency).
+//
+// Rules: --no-min-age forces zero. Otherwise, if --since parses to a duration
+// at or below autoDisableMinAge, the floor disables (signaled via the bool).
+// Unparseable --since values leave the floor on — see file-age-floor.md.
+func effectiveMinAge(noMinAge bool, since string) (time.Duration, bool) {
+	if noMinAge {
+		return 0, false
+	}
+	if since == "" {
+		return defaultMinAge, false
+	}
+	days, err := gitpkg.ParseHalfLife(since)
+	if err != nil || days <= 0 {
+		return defaultMinAge, false
+	}
+	window := time.Duration(days * 24 * float64(time.Hour))
+	if window <= autoDisableMinAge {
+		return 0, true
+	}
+	return defaultMinAge, false
 }
 
 func main() {
@@ -187,6 +227,11 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 
 	decay := !cmd.Bool("no-decay")
 
+	minAge, autoDisabled := effectiveMinAge(cmd.Bool("no-min-age"), since)
+	if autoDisabled {
+		fmt.Fprintln(os.Stderr, autoDisableNoteText)
+	}
+
 	churns, err := gitpkg.Log(absPath, since, ig, decay)
 	if err != nil {
 		return fmt.Errorf("reading git history: %w", err)
@@ -197,7 +242,7 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("analyzing file complexity: %w", err)
 	}
 
-	scores := analysis.Analyze(churns, complexities)
+	scores := analysis.Analyze(churns, complexities, minAge)
 
 	if byDir {
 		dirs := analysis.AnalyzeByDir(scores, level)

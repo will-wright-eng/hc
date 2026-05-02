@@ -3,6 +3,7 @@ package analysis
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/will-wright-eng/hc/internal/complexity"
 	"github.com/will-wright-eng/hc/internal/git"
@@ -58,6 +59,7 @@ type FileScore struct {
 	Complexity      int
 	Authors         int
 	Quadrant        Quadrant
+	FirstSeen       time.Time
 }
 
 // DirScore is an aggregated analysis result for a directory.
@@ -73,7 +75,12 @@ type DirScore struct {
 
 // Analyze merges churn and complexity data, classifies files into quadrants,
 // and returns results sorted by priority.
-func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) []FileScore {
+//
+// minAge filters files whose first-seen commit is younger than the given
+// duration (zero disables). The median computation runs over all files first,
+// so thresholds reflect the whole repository's distribution; young files are
+// dropped only after classification.
+func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity, minAge time.Duration) []FileScore {
 	churnMap := make(map[string]git.FileChurn, len(churns))
 	for _, c := range churns {
 		churnMap[c.Path] = c
@@ -96,6 +103,7 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 			Lines:           cx.Lines,
 			Complexity:      cx.Complexity,
 			Authors:         ch.Authors,
+			FirstSeen:       ch.FirstSeen,
 		})
 	}
 
@@ -110,8 +118,26 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity) [
 		scores[i].Quadrant = classify(scores[i].WeightedCommits, scores[i].Complexity, churnThreshold, complexityThreshold)
 	}
 
+	if minAge > 0 {
+		scores = filterByMinAge(scores, time.Now(), minAge)
+	}
+
 	sortScores(scores)
 	return scores
+}
+
+// filterByMinAge drops files whose first-seen commit is younger than minAge.
+// Zero-valued FirstSeen (no in-window commits) is treated as old enough — the
+// file existed before the window opened, so the floor doesn't apply.
+func filterByMinAge(scores []FileScore, now time.Time, minAge time.Duration) []FileScore {
+	out := scores[:0]
+	for _, s := range scores {
+		if !s.FirstSeen.IsZero() && now.Sub(s.FirstSeen) < minAge {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // AnalyzeByDir aggregates file scores into directory-level results.

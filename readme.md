@@ -51,6 +51,13 @@ hc analyze --json | hc report --upsert HOTSPOTS.md
 | `--json` |  | Shortcut for `--output json`. Cannot combine with `--output`. |
 | `--exclude` | `-e` | Glob pattern to exclude (repeatable, .gitignore syntax) |
 | `--no-decay` |  | Disable recency weighting (use raw commit counts) |
+| `--no-min-age` |  | Disable the 14-day file age floor |
+
+#### File age floor
+
+Files whose first commit is younger than 14 days are excluded from analysis output. The median-split classifier is unfair to files that haven't existed long enough to accumulate churn — a 3-day-old file with two commits is mechanically "cold" regardless of how active it would otherwise be. The floor filters those out so they don't pollute the cold quadrants.
+
+The floor auto-disables when `--since` is 30 days or less (a one-line stderr note announces it), since a narrow window doesn't leave enough "old enough" history for the median-split to be meaningful. Use `--no-min-age` to disable explicitly.
 
 #### `report`
 

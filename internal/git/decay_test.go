@@ -93,11 +93,15 @@ func TestParseHalfLife(t *testing.T) {
 		{"2 years", 730, false},
 		{"1 day", 1, false},
 		{"1 month", 30, false},
+		{"1 week", 7, false},
+		{"2 weeks", 14, false},
+		{"24 hours", 1, false},
+		{"48 hour", 2, false},
 		{"", 0, false},
 		{"bad", 0, true},
 		{"0 days", 0, true},
 		{"-1 days", 0, true},
-		{"5 weeks", 0, true},
+		{"yesterday", 0, true},
 	}
 	for _, tt := range tests {
 		got, err := ParseHalfLife(tt.input)

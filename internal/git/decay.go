@@ -65,13 +65,17 @@ func ParseHalfLife(s string) (float64, error) {
 
 	unit := strings.TrimSuffix(strings.ToLower(parts[1]), "s") // days→day, months→month
 	switch unit {
+	case "hour":
+		return n / 24, nil
 	case "day":
 		return n, nil
+	case "week":
+		return n * 7, nil
 	case "month":
 		return n * 30, nil
 	case "year":
 		return n * 365, nil
 	default:
-		return 0, fmt.Errorf("unknown half-life unit %q: expected days, months, or years", parts[1])
+		return 0, fmt.Errorf("unknown half-life unit %q: expected hours, days, weeks, months, or years", parts[1])
 	}
 }
