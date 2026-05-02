@@ -18,6 +18,10 @@ type FileChurn struct {
 	Commits         int
 	WeightedCommits float64
 	Authors         int
+	// FirstSeen is the earliest commit date touching this path within the
+	// scanned window. Bounded by --since when set; zero when the file has
+	// no commits in the window.
+	FirstSeen time.Time
 }
 
 // commitInfo holds the date and files for a single commit.
@@ -49,6 +53,7 @@ func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileC
 		commits         int
 		weightedCommits float64
 		authors         map[string]struct{}
+		firstSeen       time.Time
 	}
 
 	now := time.Now()
@@ -72,6 +77,9 @@ func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileC
 			}
 			s.commits++
 			s.weightedCommits += w
+			if s.firstSeen.IsZero() || ci.Date.Before(s.firstSeen) {
+				s.firstSeen = ci.Date
+			}
 		}
 	}
 
@@ -82,6 +90,9 @@ func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileC
 		if existing, ok := m[resolved]; ok {
 			existing.commits += s.commits
 			existing.weightedCommits += s.weightedCommits
+			if existing.firstSeen.IsZero() || (!s.firstSeen.IsZero() && s.firstSeen.Before(existing.firstSeen)) {
+				existing.firstSeen = s.firstSeen
+			}
 		} else {
 			m[resolved] = s
 		}
@@ -110,6 +121,7 @@ func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileC
 			Commits:         s.commits,
 			WeightedCommits: s.weightedCommits,
 			Authors:         len(s.authors),
+			FirstSeen:       s.firstSeen,
 		})
 	}
 	return result, nil

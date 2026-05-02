@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"testing"
+	"time"
 
 	"github.com/will-wright-eng/hc/internal/complexity"
 	"github.com/will-wright-eng/hc/internal/git"
@@ -21,7 +22,7 @@ func TestAnalyze_QuadrantClassification(t *testing.T) {
 		{Path: "cold-simple.go", Lines: 5, Complexity: 5},
 	}
 
-	scores := Analyze(churns, complexities)
+	scores := Analyze(churns, complexities, 0)
 
 	if len(scores) != 4 {
 		t.Fatalf("expected 4 scores, got %d", len(scores))
@@ -58,7 +59,7 @@ func TestAnalyze_SortOrder(t *testing.T) {
 		{Path: "c.go", Lines: 500, Complexity: 500},
 	}
 
-	scores := Analyze(churns, complexities)
+	scores := Analyze(churns, complexities, 0)
 	// HotCritical should come first
 	if scores[0].Path != "a.go" {
 		t.Errorf("expected a.go first (HotCritical), got %s (%s)", scores[0].Path, scores[0].Quadrant)
@@ -75,12 +76,101 @@ func TestAnalyze_ExcludesDeletedFiles(t *testing.T) {
 		// deleted.go not present in complexity results (not on disk)
 	}
 
-	scores := Analyze(churns, complexities)
+	scores := Analyze(churns, complexities, 0)
 	if len(scores) != 1 {
 		t.Fatalf("expected 1 score (deleted file excluded), got %d", len(scores))
 	}
 	if scores[0].Path != "exists.go" {
 		t.Errorf("expected exists.go, got %s", scores[0].Path)
+	}
+}
+
+func TestAnalyze_MinAgeFiltersYoungFiles(t *testing.T) {
+	now := time.Now()
+	churns := []git.FileChurn{
+		{Path: "old.go", Commits: 50, WeightedCommits: 50, Authors: 2, FirstSeen: now.Add(-90 * 24 * time.Hour)},
+		{Path: "young.go", Commits: 50, WeightedCommits: 50, Authors: 2, FirstSeen: now.Add(-3 * 24 * time.Hour)},
+	}
+	complexities := []complexity.FileComplexity{
+		{Path: "old.go", Lines: 800, Complexity: 800},
+		{Path: "young.go", Lines: 800, Complexity: 800},
+	}
+
+	scores := Analyze(churns, complexities, 14*24*time.Hour)
+
+	if len(scores) != 1 {
+		t.Fatalf("expected young.go to be filtered out, got %d scores", len(scores))
+	}
+	if scores[0].Path != "old.go" {
+		t.Errorf("expected old.go to remain, got %s", scores[0].Path)
+	}
+}
+
+func TestAnalyze_MinAgeMedianUnaffected(t *testing.T) {
+	// Young file should still count toward the median, so the surviving
+	// older files are classified against the full distribution.
+	now := time.Now()
+	churns := []git.FileChurn{
+		{Path: "old-a.go", Commits: 100, WeightedCommits: 100, FirstSeen: now.Add(-200 * 24 * time.Hour)},
+		{Path: "old-b.go", Commits: 1, WeightedCommits: 1, FirstSeen: now.Add(-200 * 24 * time.Hour)},
+		// Two young files inflate the median if they were excluded pre-classification.
+		{Path: "young-a.go", Commits: 50, WeightedCommits: 50, FirstSeen: now.Add(-2 * 24 * time.Hour)},
+		{Path: "young-b.go", Commits: 50, WeightedCommits: 50, FirstSeen: now.Add(-2 * 24 * time.Hour)},
+	}
+	complexities := []complexity.FileComplexity{
+		{Path: "old-a.go", Lines: 500, Complexity: 500},
+		{Path: "old-b.go", Lines: 500, Complexity: 500},
+		{Path: "young-a.go", Lines: 10, Complexity: 10},
+		{Path: "young-b.go", Lines: 10, Complexity: 10},
+	}
+
+	scores := Analyze(churns, complexities, 14*24*time.Hour)
+
+	// Median weighted commits over the full set is 50 (between 1 and 50).
+	// old-a (100) is hot; old-b (1) is cold. If young files had been excluded
+	// before the median was computed, the threshold would shift to 50.5 and
+	// old-a's classification might change.
+	got := map[string]Quadrant{}
+	for _, s := range scores {
+		got[s.Path] = s.Quadrant
+	}
+	if len(scores) != 2 {
+		t.Fatalf("expected 2 surviving scores, got %d", len(scores))
+	}
+	if got["old-a.go"] != HotCritical {
+		t.Errorf("old-a.go: got %s, want HotCritical", got["old-a.go"])
+	}
+	if got["old-b.go"] != ColdComplex {
+		t.Errorf("old-b.go: got %s, want ColdComplex", got["old-b.go"])
+	}
+}
+
+func TestAnalyze_MinAgeZeroDisables(t *testing.T) {
+	now := time.Now()
+	churns := []git.FileChurn{
+		{Path: "young.go", Commits: 5, WeightedCommits: 5, FirstSeen: now.Add(-1 * 24 * time.Hour)},
+	}
+	complexities := []complexity.FileComplexity{
+		{Path: "young.go", Lines: 100, Complexity: 100},
+	}
+	scores := Analyze(churns, complexities, 0)
+	if len(scores) != 1 {
+		t.Fatalf("minAge=0 should not filter; got %d", len(scores))
+	}
+}
+
+func TestAnalyze_MinAgeIgnoresZeroFirstSeen(t *testing.T) {
+	// A file with no in-window commits has zero-valued FirstSeen and should
+	// pass the floor — it presumably existed before the window opened.
+	churns := []git.FileChurn{
+		{Path: "no-churn.go", Commits: 0, WeightedCommits: 0}, // FirstSeen zero
+	}
+	complexities := []complexity.FileComplexity{
+		{Path: "no-churn.go", Lines: 100, Complexity: 100},
+	}
+	scores := Analyze(churns, complexities, 14*24*time.Hour)
+	if len(scores) != 1 {
+		t.Fatalf("zero FirstSeen should pass floor; got %d", len(scores))
 	}
 }
 

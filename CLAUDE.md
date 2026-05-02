@@ -23,6 +23,7 @@ go test -v -run TestAnalyze_QuadrantClassification ./internal/analysis/
 ./hc                                                    # analyze cwd (default; decay on)
 ./hc --since "6 months" --json --by-dir
 ./hc --no-decay                                         # raw commit counts, no recency weighting
+./hc --no-min-age                                       # disable the 14-day age floor
 ./hc analyze --json | ./hc report                       # JSON pipeline → markdown report (e.g. HOTSPOTS.md)
 ./hc analyze --json | ./hc report --upsert AGENTS.md    # inject into existing markdown (e.g. AGENTS.md)
 ./hc prompt ignore | claude -p > .hcignore              # generate a .hcignore via LLM
@@ -38,7 +39,7 @@ Pipeline: **git history → complexity scan → classification → output** (+ o
 cmd/hc/main.go          CLI entry (urfave/cli v3). Subcommands: analyze, report, prompt.
                         Root command shares analyze's flags + Action via analyzeFlags()
                         helper, so bare `hc [flags] [path]` is sugar for `hc analyze ...`.
-internal/git/            Parses git log → []FileChurn {Path, Commits, WeightedCommits, Authors}
+internal/git/            Parses git log → []FileChurn {Path, Commits, WeightedCommits, Authors, FirstSeen}
                          Supports decay weighting (decay.go) and rename tracking (rename.go)
 internal/complexity/     Walks file tree, counts LOC or indentation depth → []FileComplexity {Path, Lines}
 internal/analysis/       Merges on path, median-split thresholds, classifies → []FileScore
@@ -60,4 +61,5 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 - **Exclude patterns** (`--exclude/-e`): repeatable flag, plus `.hcignore` file support.
 - **Report writes**: `hc report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.
+- **File age floor**: files whose first commit is younger than 14 days are excluded from analysis output (the median-split is unfair to files that haven't had time to accumulate churn). Auto-disables when `--since` is 30 days or less, with a one-line stderr note. Disable explicitly with `--no-min-age`. `FirstSeen` is bounded by the `--since` window — see `docs/proposals/file-age-floor.md` for the limitation and the planned Phase 2 fix.
 - Only dependency beyond stdlib is `github.com/urfave/cli/v3`.
