@@ -1,5 +1,7 @@
 # File Age Floor — Proposal
 
+> **Status:** Phase 1 implemented on branch `file-age-floor` (2026-05-01). `FirstSeen` plumbed through `git.FileChurn` and `analysis.FileScore`; `--no-min-age` flag added; auto-disable on `--since ≤ 30d` prints a one-line stderr note; `git.ParseHalfLife` extended with `hour`/`week`. Phase 2 (unbounded `git log` for true `FirstSeen` when `--since` is narrow) and Phase 3 ("new & complex" report section) deferred — see [Follow-up](#follow-up).
+
 ## Context
 
 Hotspot classification uses a median-split on commit count to decide hot vs. cold. The split is fair when every file has had a comparable opportunity to accumulate churn — but it isn't fair to files that were created last week. A 3-day-old file with two commits is mechanically "cold" regardless of how active it would otherwise be, and if it's also long or deeply indented it gets flagged as cold-complex. That's a false signal: the cold designation is meaningless when the file hasn't existed long enough to earn a churn count.
