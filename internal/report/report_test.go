@@ -43,22 +43,14 @@ func TestRender_FileEntries(t *testing.T) {
 	}
 }
 
-func TestRender_DirEntries(t *testing.T) {
+func TestRender_DirEntriesRejected(t *testing.T) {
 	var buf bytes.Buffer
 	err := Render(strings.NewReader(sampleDirJSON), &buf, false)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected directory-level JSON to be rejected")
 	}
-	out := buf.String()
-
-	if !strings.Contains(out, "by directory") {
-		t.Error("dir output should indicate directory-level analysis")
-	}
-	if !strings.Contains(out, "Total Commits") {
-		t.Error("dir output should have dir-level column headers")
-	}
-	if !strings.Contains(out, "src") {
-		t.Error("dir output should contain dir paths")
+	if !strings.Contains(err.Error(), "directory-level analyze JSON") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

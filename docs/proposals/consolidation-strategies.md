@@ -1,10 +1,12 @@
 # Consolidation Strategies — Proposal
 
+> **Status:** Needs split before implementation. Directory mode (`--by-dir` / `-L`) has been removed so `analyze` has one file-level result shape again. Phase 1 should be file-only strategies (`top`, `quadrant`) over `[]FileScore`; mixed file/directory/summary output needs a separate schema proposal before `rollup`, `outliers`, or `hybrid` ship.
+
 ## Context
 
 On a repo with thousands of files and hundreds of directories, `hc` produces too many entries for a human-readable report. We need to consolidate down to roughly 20 entities while preserving the signal that makes hotspot analysis useful — a hot file buried in a cold directory should not disappear into a dir-level rollup.
 
-Today the only knobs are `--by-dir` and `-L` (uniform aggregation). They aren't signal-aware: `--by-dir` flattens hot files into their directories regardless of quadrant, and `-L` collapses by tree depth without regard to where the heat actually sits. `--limit` and the per-quadrant truncation that used to live in `report` were removed in anticipation of this proposal — the gap they leave is what the strategies below fill.
+Today `analyze` emits file-level rows only. Earlier directory aggregation flags (`--by-dir` and `-L`) were removed because they created a second output schema before we had a clear consolidation model. `--limit` and the per-quadrant truncation that used to live in `report` were also removed in anticipation of this proposal — the gap they leave is what the strategies below fill.
 
 This is a filtering and grouping problem worth solving with dedicated algorithms, not a new top-level command. An earlier draft of this proposal (see [history](#history)) introduced `hc filter` as a third pipeline stage between `analyze` and `report`. That framing was rejected — see [Why not a separate command](#why-not-a-separate-command). The substance — strategy interface, consolidation algorithms — survives unchanged; only the surface differs.
 
@@ -37,7 +39,7 @@ type Strategy interface {
 }
 
 // Entry is the common type consumed and produced by filter.
-// It can represent a file or a directory.
+// Phase 1 entries are file-only; directory and summary entries are deferred.
 type Entry struct {
     Path            string
     Type            string   // "file" or "dir"
@@ -51,7 +53,7 @@ type Entry struct {
 }
 ```
 
-`internal/analysis` produces `FileScore` / `DirScore`; a thin adapter in `cmd/hc/main.go` (or a `filter.FromScores` helper) maps to `[]filter.Entry`. Output entries map back to `DirScore`-shaped rows for `internal/output` to render.
+`internal/analysis` produces `[]FileScore`; a thin adapter in `cmd/hc/main.go` (or a `filter.FromScores` helper) maps to `[]filter.Entry`. Phase 1 maps back to `[]FileScore` for existing output/report rendering. Mixed file/directory/summary entries are deferred until their JSON/table/report schema is explicit.
 
 ### CLI surface
 
@@ -64,7 +66,7 @@ Two new flags on `analyze` (and therefore on the bare `hc` form):
 
 Phase 1: no `--strategy` means no consolidation — analyze emits every classified entry. Output may be long on big repos; that's the explicit cost of "no strategy yet." Phase 2 promotes `hybrid` to the default once it's been exercised on real repos.
 
-`--by-dir` and `-L` stay where they are. They remain useful as cheap, predictable rollups and compose with strategies (e.g. `--by-dir -L 2 --strategy top --budget 10` — aggregate to depth 2, then take top 10 with remainder).
+Directory rollups are no longer a separate analyze mode. They return as explicit consolidation strategies only after the mixed-entry schema is designed.
 
 ---
 
@@ -105,6 +107,8 @@ Roll up files into parent directories, but only collapse a subtree when all chil
 ### `top` — Top-N with Remainder
 
 Show the top N individual files by weighted commits, group everything else into directory-level summaries.
+
+For the file-only Phase 1 implementation, defer the remainder groups and emit only the top N file rows. The "with remainder" version belongs after the mixed-entry schema exists.
 
 **Algorithm:**
 
@@ -189,10 +193,9 @@ Hierarchical agglomerative clustering on (weighted commits, complexity) vectors,
 
 An earlier draft proposed `hc analyze | hc filter | hc report` as a three-stage pipeline. Rejected for several reasons:
 
-1. **`analyze` isn't actually bloated.** Seven flags, ~50 lines of `runAnalyze` action body. The "mixing two concerns" framing overstates a small amount of glue — and once `--limit` was removed, the only shaping left in analyze is `--by-dir` / `-L`, which are aggregation knobs, not truncation.
-2. **Reverses recently-shipped directions.** `cli-ergonomics.md` #1 makes the bare `hc` form the headline path; `dir-level.md` puts `-L` on analyze and anticipates `--by file|dir|author` there too. Pulling `--by-dir` into a separate command undoes that.
-3. **JSON schema becomes a public contract.** Three commands communicating via JSON means `FileScore` / `DirScore` shape becomes harder to evolve. Today it's an internal handshake between two callers in the same binary.
-4. **Pipeline composability is preserved.** `hc analyze --strategy hybrid --json | jq` works today's way; users who want filtering between stages can already pipe through `jq`.
+1. **`analyze` isn't actually bloated.** With directory mode removed, the command is a small file-level analysis pipeline plus output selection. The "mixing two concerns" framing overstates a small amount of glue.
+2. **JSON schema becomes a public contract.** Three commands communicating via JSON means the `FileScore` shape becomes harder to evolve. Today it's an internal handshake between two callers in the same binary.
+3. **Pipeline composability is preserved.** `hc analyze --strategy hybrid --json | jq` works today's way; users who want filtering between stages can already pipe through `jq`.
 
 The library extraction is the load-bearing idea. The new top-level command was extra surface for marginal benefit.
 
@@ -203,21 +206,27 @@ The library extraction is the load-bearing idea. The new top-level command was e
 ### Phase 1 — Library + simplest strategies
 
 - Create `internal/filter` with `Strategy` interface and shared `Entry` type.
-- Implement `top` and `quadrant` (lowest algorithmic cost). `top` directly replaces the ergonomics of the recently-removed `--limit` flag, with a remainder summary instead of silent truncation.
+- Implement `top` and `quadrant` (lowest algorithmic cost). Keep the output file-shaped in this phase; defer remainder summaries because they require a mixed-entry schema.
 - Add `--strategy` and `--budget` flags to `analyzeFlags()`. Default unset; analyze emits every classified entry as it does today.
 - Tests: unit tests in `internal/filter`; one CLI-level test that `--strategy top --budget 5` produces 5 entries.
 
-### Phase 2 — Tree-based strategies
+### Phase 2 — Mixed-entry schema
+
+- Define JSON, table, CSV, and report behavior for file, directory, and summary rows in one output stream.
+- Decide how file-level consumers such as PR file comments request unconsolidated file JSON.
+- Only after this phase should strategies emit `Type == "dir"` or `Type == "summary"`.
+
+### Phase 3 — Tree-based strategies
 
 - Implement `rollup`, `outliers`, `hybrid`.
-- Promote `hybrid` to the default `--strategy` once it's been exercised on real repos. This is the point where unset-by-default flips to hybrid-by-default, restoring sane out-of-the-box behavior on large repos that lost it when `--limit` and the report-side truncation were removed.
+- Promote `hybrid` to the default `--strategy` only after mixed output has been exercised on real repos. This is the point where unset-by-default may flip to hybrid-by-default, restoring sane out-of-the-box behavior on large repos that lost it when `--limit` and the report-side truncation were removed.
 - Document `hybrid` as the recommended choice for large repos in README.
 
-### Phase 3 — Clustering (optional)
+### Phase 4 — Clustering (optional)
 
 - Implement `cluster` only if Phase 2 strategies leave a real gap. Ward's method is ~100 lines but adds maintenance surface.
 
-### Phase 4 (deferred) — `hc filter` as a top-level verb
+### Phase 5 (deferred) — `hc filter` as a top-level verb
 
 If usage shows users genuinely want to apply different strategies to *saved* JSON without re-running analyze (e.g. exploring strategies on a stored snapshot, or chaining `jq` between stages), `hc filter` becomes worth adding. The library is already in place; it's a thin command wrapper. Until that need shows up, defer.
 
@@ -241,11 +250,11 @@ Removing `--limit` and the report-side truncation before the strategies land mea
 
 Strategies like `hybrid` emit files and directories in the same list. Renderers must handle `Type == "dir"` rows.
 
-**Mitigation:** `internal/output` already handles dir rows via the `--by-dir` path; reuse that code path. Add a `Type` column or visual marker if dirs and files mix in one table.
+**Mitigation:** Treat mixed output as its own schema decision before implementing `hybrid`. Add a `Type` column or visual marker if dirs and files mix in one table.
 
 ### Schema drift
 
-`filter.Entry` duplicates parts of `FileScore` / `DirScore`.
+`filter.Entry` duplicates parts of `FileScore`.
 
 **Mitigation:** Acceptable cost of keeping `filter` framework-agnostic. The mapping is small (~20 lines). Alternative — making analysis types implement a `filter.Entry` interface — is cleaner but couples the packages.
 
@@ -253,8 +262,8 @@ Strategies like `hybrid` emit files and directories in the same list. Renderers 
 
 ## History
 
-This proposal was originally drafted as a three-stage `analyze | filter | report` pipeline with `hc filter` as a new top-level command. The user pushed back on whether `analyze` was actually bloated enough to justify the split; on review the bloat case was thin and the new command reversed several directions already shipped or planned in `cli-ergonomics.md` and `dir-level.md`. The current version preserves the algorithmic substance (strategy interface, six consolidation strategies) and drops the architectural framing (third pipeline stage, JSON-as-public-contract).
+This proposal was originally drafted as a three-stage `analyze | filter | report` pipeline with `hc filter` as a new top-level command. The user pushed back on whether `analyze` was actually bloated enough to justify the split; on review the bloat case was thin. The current version preserves the algorithmic substance (strategy interface, six consolidation strategies) and drops the architectural framing (third pipeline stage, JSON-as-public-contract).
 
-After the architectural pivot, `--limit` and the per-quadrant truncation in `report` were removed in advance of this proposal landing. Both were workarounds for the missing strategy layer; deleting them clears the path for the strategies to own consolidation cleanly, at the cost of a short window where output size is uncapped until Phase 1 ships.
+After the architectural pivot, `--limit`, `--by-dir`, `-L`, and the per-quadrant truncation in `report` were removed in advance of this proposal landing. Those were workarounds for the missing strategy layer or parallel output paths that complicated it; deleting them clears the path for strategies to own consolidation cleanly, at the cost of a short window where output size is uncapped until Phase 1 ships.
 
-`hc filter` as a top-level verb stays on the table as Phase 4 if the library proves valuable and a "filter saved JSON" use case emerges.
+`hc filter` as a top-level verb stays on the table as Phase 5 if the library proves valuable and a "filter saved JSON" use case emerges.

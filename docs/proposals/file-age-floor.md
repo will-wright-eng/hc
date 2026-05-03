@@ -60,7 +60,7 @@ The age data lives in `internal/git`: `FileChurn` gains a `FirstSeen time.Time` 
 1. The median computation should reflect the whole repository's distribution, not just files older than the floor. Filtering pre-classification would shift thresholds in a way that depends on how many young files exist, which is noisy.
 2. Carrying `FirstSeen` on `FileScore` lets downstream consumers — including the future "new & complex" callout — read it without re-deriving from raw churn data.
 
-Doing the filter inside `Analyze` (rather than in `runAnalyze` after the call) means `AnalyzeByDir` automatically gets the cleaned set: young files don't pollute directory aggregates without any extra plumbing.
+Doing the filter inside `Analyze` (rather than in `runAnalyze` after the call) keeps the age-floor rule upstream of every downstream consumer. Future consolidation strategies will receive the cleaned file set without extra plumbing.
 
 The auto-disable check sits in `cmd/hc/main.go` next to flag parsing: if `--since` parses to ≤ 30 days, set the effective `minAge` to zero before handing off to analysis.
 
@@ -83,7 +83,7 @@ The auto-disable check sits in `cmd/hc/main.go` next to flag parsing: if `--sinc
 
 - A user-tunable floor duration. The whole point of this refactor is to not ship that knob.
 - Surfacing excluded files in a "new & complex" report section. Belongs to a separate proposal that consumes `FirstSeen` from `FileScore` and renders it via `internal/report`. Likely composes with the `outliers` / `hybrid` strategies in `consolidation-strategies.md` rather than living entirely in `report`.
-- A `--by-dir` interpretation of age. Directory rollups don't have a meaningful "first seen" — defer until a real use case shows up.
+- A directory-rollup interpretation of age. Directory summaries don't have a meaningful "first seen" — defer until mixed-granularity consolidation has a real use case.
 - Configurable behavior (exclude vs. annotate vs. demote). Start with exclude; add modes only if needed.
 
 ---

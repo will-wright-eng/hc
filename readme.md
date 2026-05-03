@@ -19,11 +19,8 @@ hc
 # Analyze a specific path
 hc internal/
 
-# Last 6 months, top 20 results
-hc -s "6 months" -n 20
-
-# Aggregate by directory
-hc -d
+# Last 6 months
+hc -s "6 months"
 
 # Output as JSON or CSV
 hc --json
@@ -46,7 +43,6 @@ hc analyze --json | hc report --upsert HOTSPOTS.md
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--since` | `-s` | Restrict churn window (e.g. "6 months") |
-| `--by-dir` | `-d` | Aggregate results by directory |
 | `--output` | `-o` | Output format: table, json, csv (default: table) |
 | `--json` |  | Shortcut for `--output json`. Cannot combine with `--output`. |
 | `--exclude` | `-e` | Glob pattern to exclude (repeatable, .gitignore syntax) |

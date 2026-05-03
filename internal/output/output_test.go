@@ -67,17 +67,3 @@ func TestFormatFilesCSV(t *testing.T) {
 		t.Error("CSV should have header")
 	}
 }
-
-func TestFormatDirsTable(t *testing.T) {
-	dirs := []analysis.DirScore{
-		{Path: "src", Files: 5, TotalCommits: 100, TotalLines: 2000, TotalComplexity: 2000, Quadrant: analysis.HotCritical},
-	}
-	var buf bytes.Buffer
-	err := FormatDirs(&buf, dirs, "table", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(buf.String(), "TOTAL COMMITS") {
-		t.Error("dir table should contain TOTAL COMMITS header")
-	}
-}

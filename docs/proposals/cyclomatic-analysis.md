@@ -84,9 +84,9 @@ Pass the metric value from the flag through to `complexity.Walk()` and propagate
 - `indentation` — enables indent-sum scoring.
 - Future values (e.g. `cyclomatic`) can be added without breaking the interface.
 
-### Interaction with `--by-dir`
+### Interaction with Future Rollups
 
-Directory rollup sums `Complexity` across files in the directory, same as it currently sums `Lines`. No special handling needed — indent sums are additive.
+Any future directory or mixed-granularity rollup can sum `Complexity` across files the same way it sums `Lines`. No special handling is needed — indent sums are additive.
 
 ### Interaction with `--format`
 
