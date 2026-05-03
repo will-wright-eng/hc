@@ -60,7 +60,7 @@ def load_hotspots(path: Path) -> list[dict[str, Any]]:
     if "files" in first and "total_commits" in first:
         raise ValueError(
             "directory-level analyze JSON is not supported; "
-            "run hc analyze without --by-dir"
+            "run hc analyze --json to produce file-level JSON"
         )
 
     entries: list[dict[str, Any]] = []

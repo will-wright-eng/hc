@@ -21,7 +21,7 @@ go test -v -run TestAnalyze_QuadrantClassification ./internal/analysis/
 
 # Run the tool — `hc [path]` is sugar for `hc analyze [path]`
 ./hc                                                    # analyze cwd (default; decay on)
-./hc --since "6 months" --json --by-dir
+./hc --since "6 months" --json
 ./hc --no-decay                                         # raw commit counts, no recency weighting
 ./hc --no-min-age                                       # disable the 14-day age floor
 ./hc analyze --json | ./hc report                       # JSON pipeline → markdown report (e.g. HOTSPOTS.md)
@@ -54,7 +54,6 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 - **Threshold strategy**: median (p50) of commits and lines across all files — self-adaptive, no configuration needed.
 - **Quadrant priority order**: HotCritical → HotSimple → ColdComplex → ColdSimple, then by weighted commits descending.
 - **Deleted files** (in git history but not on disk) are excluded from results.
-- **Directory mode** (`--by-dir/-d`) aggregates file scores into `[]DirScore` with summed metrics.
 - **Decay**: commits are weighted by recency by default; half-life adapts to the analyzed window (= age of oldest commit in scope). Use `--no-decay` for raw commit counts. Narrow the window via `--since` to shorten the half-life.
 - **Complexity metric**: indent-sum (always). Each non-blank, non-comment line contributes its indent depth; classification thresholds are the median of indent-sum across files. LOC is still computed and shown as a display column but does not drive classification.
 - **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json` and cannot be combined with `--output <non-json>` (returns an error).

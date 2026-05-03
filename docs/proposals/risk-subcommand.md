@@ -266,7 +266,7 @@ internal/output/
 - **Base ref doesn't exist**: Error with message suggesting valid refs.
 - **Detached HEAD / same ref**: `git diff` returns empty; handle same as no changed files.
 - **Renamed files on branch**: `git diff --name-only` uses current names; `analyze` already resolves renames via `DetectRenames`, so paths should match.
-- **Directory-mode JSON**: `risk` only supports file-level JSON (not `--by-dir` output). If directory-level JSON is detected, error with a clear message.
+- **Aggregated JSON**: `risk` only supports file-level JSON. If a future mixed-granularity or aggregate JSON shape is detected, error with a clear message.
 
 ## Future Considerations
 

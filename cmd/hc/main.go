@@ -39,20 +39,6 @@ func analyzeFlags(hidden bool) []cli.Flag {
 			Usage:   "Restrict churn window (e.g. \"6 months\")",
 			Hidden:  hidden,
 		},
-		&cli.BoolFlag{
-			Name:    "by-dir",
-			Aliases: []string{"d"},
-			Usage:   "Aggregate results by directory",
-			Hidden:  hidden,
-		},
-		&cli.IntFlag{
-			Name:        "level",
-			Aliases:     []string{"L"},
-			Usage:       "Cap directory aggregation depth (implies --by-dir; 0 = single bucket)",
-			Value:       -1,
-			HideDefault: true,
-			Hidden:      hidden,
-		},
 		&cli.StringFlag{
 			Name:    "output",
 			Aliases: []string{"o"},
@@ -207,16 +193,6 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		}
 		format = "json"
 	}
-	byDir := cmd.Bool("by-dir")
-
-	level := -1
-	if cmd.IsSet("level") {
-		level = int(cmd.Int("level"))
-		if level < 0 {
-			return fmt.Errorf("--level must be >= 0")
-		}
-		byDir = true
-	}
 
 	patterns, err := ignore.LoadFile(filepath.Join(absPath, ".hcignore"))
 	if err != nil {
@@ -243,11 +219,6 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	scores := analysis.Analyze(churns, complexities, minAge)
-
-	if byDir {
-		dirs := analysis.AnalyzeByDir(scores, level)
-		return output.FormatDirs(os.Stdout, dirs, format, decay)
-	}
 
 	return output.FormatFiles(os.Stdout, scores, format, decay)
 }

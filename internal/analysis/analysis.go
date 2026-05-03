@@ -2,7 +2,6 @@ package analysis
 
 import (
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/will-wright-eng/hc/internal/complexity"
@@ -60,17 +59,6 @@ type FileScore struct {
 	Authors         int
 	Quadrant        Quadrant
 	FirstSeen       time.Time
-}
-
-// DirScore is an aggregated analysis result for a directory.
-type DirScore struct {
-	Path                 string
-	Files                int
-	TotalLines           int
-	TotalComplexity      int
-	TotalCommits         int
-	TotalWeightedCommits float64
-	Quadrant             Quadrant
 }
 
 // Analyze merges churn and complexity data, classifies files into quadrants,
@@ -140,67 +128,6 @@ func filterByMinAge(scores []FileScore, now time.Time, minAge time.Duration) []F
 	return out
 }
 
-// AnalyzeByDir aggregates file scores into directory-level results.
-//
-// level controls how deeply paths are rolled up:
-//
-//	level < 0  → no cap; group by each file's full parent directory (default).
-//	level == 0 → single bucket; everything aggregates into "." (whole-repo summary).
-//	level > 0  → truncate each directory to N path segments before grouping.
-//
-// Files shallower than level keep their natural depth (no padding); files
-// deeper than level are truncated. Mirrors `tree -L N` semantics.
-func AnalyzeByDir(fileScores []FileScore, level int) []DirScore {
-	type dirAgg struct {
-		files                int
-		totalLines           int
-		totalComplexity      int
-		totalCommits         int
-		totalWeightedCommits float64
-	}
-
-	m := make(map[string]*dirAgg)
-	for _, fs := range fileScores {
-		dir := capDepth(dirOf(fs.Path), level)
-		agg, ok := m[dir]
-		if !ok {
-			agg = &dirAgg{}
-			m[dir] = agg
-		}
-		agg.files++
-		agg.totalLines += fs.Lines
-		agg.totalComplexity += fs.Complexity
-		agg.totalCommits += fs.Commits
-		agg.totalWeightedCommits += fs.WeightedCommits
-	}
-
-	var dirs []DirScore
-	for path, agg := range m {
-		dirs = append(dirs, DirScore{
-			Path:                 path,
-			Files:                agg.files,
-			TotalLines:           agg.totalLines,
-			TotalComplexity:      agg.totalComplexity,
-			TotalCommits:         agg.totalCommits,
-			TotalWeightedCommits: agg.totalWeightedCommits,
-		})
-	}
-
-	if len(dirs) == 0 {
-		return nil
-	}
-
-	commitThreshold := medianDirWeightedCommits(dirs)
-	complexityThreshold := float64(medianDirComplexity(dirs))
-
-	for i := range dirs {
-		dirs[i].Quadrant = classify(dirs[i].TotalWeightedCommits, dirs[i].TotalComplexity, commitThreshold, complexityThreshold)
-	}
-
-	sortDirScores(dirs)
-	return dirs
-}
-
 func classify(weightedCommits float64, lines int, churnThreshold, linesThreshold float64) Quadrant {
 	hot := weightedCommits > churnThreshold
 	complex := float64(lines) > linesThreshold
@@ -228,22 +155,6 @@ func medianComplexity(scores []FileScore) int {
 	vals := make([]int, len(scores))
 	for i, s := range scores {
 		vals[i] = s.Complexity
-	}
-	return median(vals)
-}
-
-func medianDirWeightedCommits(dirs []DirScore) float64 {
-	vals := make([]float64, len(dirs))
-	for i, d := range dirs {
-		vals[i] = d.TotalWeightedCommits
-	}
-	return medianFloat(vals)
-}
-
-func medianDirComplexity(dirs []DirScore) int {
-	vals := make([]int, len(dirs))
-	for i, d := range dirs {
-		vals[i] = d.TotalComplexity
 	}
 	return median(vals)
 }
@@ -296,37 +207,4 @@ func sortScores(scores []FileScore) {
 		}
 		return scores[i].WeightedCommits > scores[j].WeightedCommits
 	})
-}
-
-func sortDirScores(dirs []DirScore) {
-	sort.Slice(dirs, func(i, j int) bool {
-		pi, pj := quadrantPriority(dirs[i].Quadrant), quadrantPriority(dirs[j].Quadrant)
-		if pi != pj {
-			return pi < pj
-		}
-		return dirs[i].TotalWeightedCommits > dirs[j].TotalWeightedCommits
-	})
-}
-
-func dirOf(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			return path[:i]
-		}
-	}
-	return "."
-}
-
-func capDepth(dir string, level int) string {
-	if level < 0 || dir == "." {
-		return dir
-	}
-	if level == 0 {
-		return "."
-	}
-	parts := strings.Split(dir, "/")
-	if len(parts) > level {
-		parts = parts[:level]
-	}
-	return strings.Join(parts, "/")
 }
