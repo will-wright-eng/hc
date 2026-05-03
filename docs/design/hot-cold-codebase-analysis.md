@@ -28,15 +28,15 @@ Adam Tornhill's methodology (formalized in *Your Code as a Crime Scene* and impl
 
 ```
                     LOW CHURN              HIGH CHURN
-                ┌──────────────────┬──────────────────────┐
+                ┌───────────────────┬───────────────────────┐
 HIGH COMPLEXITY │  Cold Complexity  │  🔥 Critical Hotspot  │
                 │  Technical debt,  │  Complex AND actively │
                 │  stable liability │  changing — refactor  │
-                ├──────────────────┼──────────────────────┤
+                ├───────────────────┼───────────────────────┤
 LOW COMPLEXITY  │  Cold & Fine      │  Hot but Manageable   │
                 │  Leave it alone   │  Config, generated,   │
-                │                  │  or simple glue code  │
-                └──────────────────┴──────────────────────┘
+                │                   │  or simple glue code  │
+                └───────────────────┴───────────────────────┘
 ```
 
 The **Critical Hotspot** quadrant is the primary target. These files concentrate both ongoing development activity and structural complexity, making them simultaneously the most expensive to work in and the most likely to produce bugs. Empirical research across Mozilla, Microsoft Windows, the Eclipse IDE, and many open-source projects consistently shows that roughly **80% of bugs originate in 20% of files** — and that 20% maps closely onto the hotspot quadrant.
