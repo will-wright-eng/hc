@@ -84,6 +84,11 @@ The action is a thin shell pipeline on top of existing tools:
 
 4. **Filter** to the intersection of (changed files) × (`cold-complex` ∪
    `hot-critical`) using the pure-Python helper script.
+
+   ```bash
+   python3 scripts/filter-pr-hotspots.py hotspots.json changed.txt > hotspot-matches.tsv
+   ```
+
 5. **Post file-level review comments** via
    `gh api repos/{owner}/{repo}/pulls/{n}/comments` with
    `subject_type=file` (anchors the comment to the file in the Files
@@ -112,7 +117,7 @@ filter later (see *Future Work*) if the workflow gets unwieldy.
 .github/workflows/
   pr-file-comments.yml             # new workflow, parallel to hotspots.yml
 scripts/
-  post-pr-file-comments.sh         # shell glue: git diff, templates, gh api calls
+  post-pr-file-comments.sh         # shell glue: templates and gh api calls
   filter-pr-hotspots.py            # pure Python JSON/list comparison
   templates/
     hotcritical.md                 # message body for HotCritical
@@ -154,12 +159,16 @@ jobs:
         run: git worktree add --detach ../hc-base "$BASE_SHA"
       - name: Analyze base branch
         run: ./hc analyze --json ../hc-base > hotspots.json
+      - name: Determine changed files
+        run: make pr-changed-files
+      - name: Match changed hotspots
+        run: make pr-hotspot-matches
       - name: Post per-file review comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: ./scripts/post-pr-file-comments.sh hotspots.json
+        run: make pr-file-comments
 ```
 
 ---
@@ -262,9 +271,8 @@ commit, quadrant churn should only happen when the PR base changes.
    bulk of the value, get it right first.
 2. Write `scripts/filter-pr-hotspots.py`: parse hotspot JSON and intersect it
    with the changed-file list.
-3. Write `scripts/post-pr-file-comments.sh`: run `git diff --name-only`, render
-   templates, and post file-level review comments via `gh api` with idempotency
-   tags.
+3. Write `scripts/post-pr-file-comments.sh`: render templates and post
+   file-level review comments via `gh api` with idempotency tags.
 4. Add `.github/workflows/pr-file-comments.yml`.
 5. Dogfood on this repo for a few PRs; tune thresholds and decide
    HotCritical in/out based on reviewer feedback.

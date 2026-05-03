@@ -31,9 +31,15 @@ jobs:
       - name: Analyze base branch
         run: ./hc analyze --json ../hc-base > hotspots.json
 
+      - name: Determine changed files
+        run: make pr-changed-files
+
+      - name: Match changed hotspots
+        run: make pr-hotspot-matches
+
       - name: Post per-file hotspot comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: ./scripts/post-pr-file-comments.sh hotspots.json
+        run: make pr-file-comments
