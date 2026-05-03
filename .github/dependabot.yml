@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 5
+      semver-major-days: 30
+      semver-minor-days: 14
+      semver-patch-days: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 5
+      semver-major-days: 30
+      semver-minor-days: 14
+      semver-patch-days: 5
