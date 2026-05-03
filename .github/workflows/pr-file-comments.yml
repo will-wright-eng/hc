@@ -1,0 +1,39 @@
+name: pr-file-comments
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  comments:
+    runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build hc
+        run: make build
+
+      - name: Prepare base worktree
+        run: git worktree add --detach ../hc-base "$BASE_SHA"
+
+      - name: Analyze base branch
+        run: ./hc analyze --json ../hc-base > hotspots.json
+
+      - name: Post per-file hotspot comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: ./scripts/post-pr-file-comments.sh hotspots.json
