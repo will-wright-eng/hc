@@ -40,6 +40,8 @@ type AnalyzeOptions struct {
 	Decay bool
 	// NoMinAge forces the file age floor off regardless of Since.
 	NoMinAge bool
+	// Now is the reference time for time-sensitive analysis. Zero means time.Now().
+	Now time.Time
 }
 
 // AnalyzeResult is everything the caller needs to render output and report on
@@ -83,18 +85,27 @@ func Analyze(_ context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	patterns = append(patterns, opts.Excludes...)
 	ig := ignore.New(patterns)
 
-	churns, err := gitpkg.Log(repoRoot, opts.Since, ig, opts.Decay)
+	churns, err := gitpkg.LogWithOptions(gitpkg.LogOptions{
+		RepoPath: repoRoot,
+		Since:    opts.Since,
+		Ignore:   ig,
+		Decay:    opts.Decay,
+		Now:      opts.Now,
+	})
 	if err != nil {
 		return AnalyzeResult{}, fmt.Errorf("reading git history: %w", err)
 	}
 
-	complexities, err := complexity.Walk(repoRoot, ig)
+	complexities, err := complexity.WalkWithOptions(repoRoot, complexity.Options{Ignore: ig})
 	if err != nil {
 		return AnalyzeResult{}, fmt.Errorf("analyzing file complexity: %w", err)
 	}
 
 	minAge, autoDisabled := EffectiveMinAge(opts.NoMinAge, opts.Since)
-	scores := analysis.Analyze(churns, complexities, minAge)
+	scores := analysis.AnalyzeWithOptions(churns, complexities, analysis.Options{
+		MinAge: minAge,
+		Now:    opts.Now,
+	})
 
 	if subtree != "" {
 		scores = filterToSubtree(scores, subtree)

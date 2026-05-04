@@ -61,6 +61,15 @@ type FileScore struct {
 	FirstSeen       time.Time
 }
 
+// Options controls file scoring and post-classification filtering.
+type Options struct {
+	// MinAge filters files whose first-seen commit is younger than this duration.
+	// Zero disables the filter.
+	MinAge time.Duration
+	// Now is the reference time for age-based filtering. Zero means time.Now().
+	Now time.Time
+}
+
 // Analyze merges churn and complexity data, classifies files into quadrants,
 // and returns results sorted by priority.
 //
@@ -69,6 +78,12 @@ type FileScore struct {
 // so thresholds reflect the whole repository's distribution; young files are
 // dropped only after classification.
 func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity, minAge time.Duration) []FileScore {
+	return AnalyzeWithOptions(churns, complexities, Options{MinAge: minAge})
+}
+
+// AnalyzeWithOptions merges churn and complexity data, classifies files into
+// quadrants, and returns results sorted by priority.
+func AnalyzeWithOptions(churns []git.FileChurn, complexities []complexity.FileComplexity, opts Options) []FileScore {
 	churnMap := make(map[string]git.FileChurn, len(churns))
 	for _, c := range churns {
 		churnMap[c.Path] = c
@@ -106,8 +121,12 @@ func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity, m
 		scores[i].Quadrant = classify(scores[i].WeightedCommits, scores[i].Complexity, churnThreshold, complexityThreshold)
 	}
 
-	if minAge > 0 {
-		scores = filterByMinAge(scores, time.Now(), minAge)
+	if opts.MinAge > 0 {
+		now := opts.Now
+		if now.IsZero() {
+			now = time.Now()
+		}
+		scores = filterByMinAge(scores, now, opts.MinAge)
 	}
 
 	sortScores(scores)
