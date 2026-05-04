@@ -10,7 +10,20 @@ import (
 	"github.com/will-wright-eng/hc/internal/analysis"
 )
 
-// FormatFiles writes file scores in the given format.
+// ValidateFormat returns an error if format is not a recognized output format.
+// Empty string is treated as the default (table) and accepted.
+func ValidateFormat(format string) error {
+	switch format {
+	case "", "table", "json", "csv":
+		return nil
+	default:
+		return fmt.Errorf("unknown output format %q (supported: table, json, csv)", format)
+	}
+}
+
+// FormatFiles writes file scores in the given format. Unknown formats fall
+// back to table; callers that want strict rejection should call ValidateFormat
+// first.
 func FormatFiles(w io.Writer, scores []analysis.FileScore, format string, decay bool) error {
 	switch format {
 	case "json":

@@ -6,26 +6,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/urfave/cli/v3"
-	"github.com/will-wright-eng/hc/internal/analysis"
-	"github.com/will-wright-eng/hc/internal/complexity"
-	gitpkg "github.com/will-wright-eng/hc/internal/git"
-	"github.com/will-wright-eng/hc/internal/ignore"
+	"github.com/will-wright-eng/hc/internal/app"
 	"github.com/will-wright-eng/hc/internal/output"
 	"github.com/will-wright-eng/hc/internal/prompt"
 	"github.com/will-wright-eng/hc/internal/report"
 )
 
-// defaultMinAge is the file age floor: files younger than this are excluded
-// from analysis output. Auto-disables on narrow --since windows; opt out
-// explicitly with --no-min-age.
-const (
-	defaultMinAge       = 14 * 24 * time.Hour
-	autoDisableMinAge   = 30 * 24 * time.Hour
-	autoDisableNoteText = "age floor disabled: --since window ≤ 30d"
-)
+// autoDisableNoteText is the stderr message shown when the file age floor
+// auto-disables because --since is narrow. The rule itself lives in
+// internal/app; the message stays here as a CLI presentation concern.
+const autoDisableNoteText = "age floor disabled: --since window ≤ 30d"
 
 // analyzeFlags returns a fresh slice each call. urfave/cli mutates flag state
 // during parse, so root and subcommand must not share the same flag pointers.
@@ -70,33 +62,18 @@ func analyzeFlags(hidden bool) []cli.Flag {
 	}
 }
 
-// effectiveMinAge resolves the file age floor for an analyze run. Returns
-// the duration to apply (zero means disabled), and whether the auto-disable
-// rule fired (caller emits a stderr note for transparency).
-//
-// Rules: --no-min-age forces zero. Otherwise, if --since parses to a duration
-// at or below autoDisableMinAge, the floor disables (signaled via the bool).
-// Unparseable --since values leave the floor on — see file-age-floor.md.
-func effectiveMinAge(noMinAge bool, since string) (time.Duration, bool) {
-	if noMinAge {
-		return 0, false
+func main() {
+	cmd := buildCommand()
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
-	if since == "" {
-		return defaultMinAge, false
-	}
-	days, err := gitpkg.ParseHalfLife(since)
-	if err != nil || days <= 0 {
-		return defaultMinAge, false
-	}
-	window := time.Duration(days * 24 * float64(time.Hour))
-	if window <= autoDisableMinAge {
-		return 0, true
-	}
-	return defaultMinAge, false
 }
 
-func main() {
-	cmd := &cli.Command{
+// buildCommand assembles the root cli.Command. Extracted from main so tests
+// can invoke the CLI in-process.
+func buildCommand() *cli.Command {
+	return &cli.Command{
 		Name:      "hc",
 		Usage:     "Hot/Cold codebase analysis — churn × complexity hotspot matrix",
 		ArgsUsage: "[path]",
@@ -160,67 +137,54 @@ func main() {
 			},
 		},
 	}
-
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
 }
 
-func resolvePathArg(cmd *cli.Command) (string, error) {
+func resolvePathArg(cmd *cli.Command) string {
 	path := cmd.Args().First()
 	if path == "" {
 		path = "."
 	}
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("resolving path: %w", err)
-	}
-	return absPath, nil
+	return path
 }
 
-func runAnalyze(ctx context.Context, cmd *cli.Command) error {
-	absPath, err := resolvePathArg(cmd)
-	if err != nil {
-		return err
-	}
-
-	since := cmd.String("since")
+// resolveFormat handles the --json shorthand and its conflict with --output.
+func resolveFormat(cmd *cli.Command) (string, error) {
 	format := cmd.String("output")
 	if cmd.Bool("json") {
 		if cmd.IsSet("output") && format != "json" {
-			return fmt.Errorf("--json conflicts with --output %s (use one)", format)
+			return "", fmt.Errorf("--json conflicts with --output %s (use one)", format)
 		}
 		format = "json"
 	}
+	return format, nil
+}
 
-	patterns, err := ignore.LoadFile(filepath.Join(absPath, ".hcignore"))
+func runAnalyze(ctx context.Context, cmd *cli.Command) error {
+	format, err := resolveFormat(cmd)
 	if err != nil {
-		return fmt.Errorf("reading .hcignore: %w", err)
+		return err
 	}
-	patterns = append(patterns, cmd.StringSlice("exclude")...)
-	ig := ignore.New(patterns)
+	if err := output.ValidateFormat(format); err != nil {
+		return err
+	}
 
-	decay := !cmd.Bool("no-decay")
+	opts := app.AnalyzeOptions{
+		Path:     resolvePathArg(cmd),
+		Since:    cmd.String("since"),
+		Excludes: cmd.StringSlice("exclude"),
+		Decay:    !cmd.Bool("no-decay"),
+		NoMinAge: cmd.Bool("no-min-age"),
+	}
 
-	minAge, autoDisabled := effectiveMinAge(cmd.Bool("no-min-age"), since)
-	if autoDisabled {
+	result, err := app.Analyze(ctx, opts)
+	if err != nil {
+		return err
+	}
+	if result.AutoDisabledMinAge {
 		fmt.Fprintln(os.Stderr, autoDisableNoteText)
 	}
 
-	churns, err := gitpkg.Log(absPath, since, ig, decay)
-	if err != nil {
-		return fmt.Errorf("reading git history: %w", err)
-	}
-
-	complexities, err := complexity.Walk(absPath, ig)
-	if err != nil {
-		return fmt.Errorf("analyzing file complexity: %w", err)
-	}
-
-	scores := analysis.Analyze(churns, complexities, minAge)
-
-	return output.FormatFiles(os.Stdout, scores, format, decay)
+	return output.FormatFiles(os.Stdout, result.Files, format, result.Decay)
 }
 
 func runReport(ctx context.Context, cmd *cli.Command) error {
@@ -272,9 +236,10 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runPromptIgnore(ctx context.Context, cmd *cli.Command) error {
-	absPath, err := resolvePathArg(cmd)
+	path := resolvePathArg(cmd)
+	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolving path: %w", err)
 	}
 
 	opts := prompt.IgnoreOpts{
