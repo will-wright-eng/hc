@@ -4,8 +4,9 @@
 
 This document records the open issues from a focused review of the `hc` CLI
 codebase. Items that have already been fixed (subdirectory churn merge, unknown
-output format validation, and the CLI/orchestration split into `internal/app`)
-have been removed; what remains are the partial and unaddressed items.
+output format validation, the CLI/orchestration split into `internal/app`, and
+full gitignore semantics for `.hcignore` via `sabhiram/go-gitignore`) have been
+removed; what remains are the partial and unaddressed items.
 
 The main remaining growth risks are git extraction, hard-coded policy in the
 complexity scanner, and an implicit JSON contract shared between `output` and
@@ -43,28 +44,6 @@ Recommended direction:
 
 This is not urgent for small repositories, but it is one of the first places
 large-repo users will feel friction.
-
-### Ignore matching advertises more than it implements
-
-The documentation and flag help describe `.hcignore` as gitignore-style
-matching. The matcher supports useful basics, including basename globs,
-directory patterns, and simple `**`, but it is not full gitignore semantics.
-
-Likely gaps include:
-
-- Negation patterns with `!`.
-- Leading-slash anchoring.
-- Escaped comments.
-- Some nuanced `**` behavior.
-- Gitignore precedence and ordering rules.
-
-Recommended direction:
-
-- Either document this as simplified glob syntax, or
-- Replace the custom matcher with a proven gitignore parser.
-
-The current custom matcher is understandable, but the name "gitignore-style"
-sets user expectations high.
 
 ### Complexity policy is hard-coded
 
@@ -142,15 +121,13 @@ This is mostly a testability and reproducibility issue, not a functional bug.
 
 ## Recommended Fix Order
 
-1. Decide whether `.hcignore` is simplified glob syntax or full gitignore
-   semantics, and align the flag help and docs with the decision.
-2. Add options structs for analysis, git extraction, and complexity scanning.
-3. Harden report markdown escaping.
-4. Thread `context.Context` through git extraction and capture stderr on the
+1. Add options structs for analysis, git extraction, and complexity scanning.
+2. Harden report markdown escaping.
+3. Thread `context.Context` through git extraction and capture stderr on the
    remaining invocations; revisit streaming when large repos become a target.
-5. Inject `now` into `analysis.Analyze` and `report.Render` so time is no
+4. Inject `now` into `analysis.Analyze` and `report.Render` so time is no
    longer baked into pure paths.
-6. Promote the JSON output to a shared DTO with a schema version.
+5. Promote the JSON output to a shared DTO with a schema version.
 
 ---
 
