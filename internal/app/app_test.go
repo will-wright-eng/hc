@@ -1,0 +1,176 @@
+package app
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// initTestRepo creates a temp git repo with two source files in different
+// subdirectories, each with at least one commit, and returns the repo root.
+// All commits are dated well in the past so the default min-age floor never
+// trips them. Tests still pass NoMinAge=true to be explicit.
+func initTestRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	mustRun := func(cmdName string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(cmdName, args...)
+		cmd.Dir = dir
+		// Force commit dates well in the past so age-floor logic never triggers
+		// even if a future test forgets NoMinAge.
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test",
+			"GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=test",
+			"GIT_COMMITTER_EMAIL=test@example.com",
+			"GIT_AUTHOR_DATE=2020-01-01T00:00:00Z",
+			"GIT_COMMITTER_DATE=2020-01-01T00:00:00Z",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%s %v: %v\n%s", cmdName, args, err, out)
+		}
+	}
+
+	mustRun("git", "init", "-q", "-b", "main")
+	mustRun("git", "config", "user.email", "test@example.com")
+	mustRun("git", "config", "user.name", "test")
+	mustRun("git", "config", "commit.gpgsign", "false")
+
+	writeFile := func(rel, body string) {
+		t.Helper()
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeFile("internal/foo/foo.go", "package foo\n\nfunc Foo() {\n\treturn\n}\n")
+	writeFile("internal/foo/bar.go", "package foo\n\nfunc Bar() {\n\treturn\n}\n")
+	writeFile("cmd/main.go", "package main\n\nfunc main() {}\n")
+
+	mustRun("git", "add", ".")
+	mustRun("git", "commit", "-q", "-m", "initial")
+
+	// Second commit touches one file so churn varies across files.
+	writeFile("internal/foo/foo.go", "package foo\n\nfunc Foo() {\n\treturn\n}\n\nfunc Foo2() {}\n")
+	mustRun("git", "add", ".")
+	mustRun("git", "commit", "-q", "-m", "second")
+
+	root, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func TestAnalyze_Root_ProducesChurn(t *testing.T) {
+	root := initTestRepo(t)
+
+	res, err := Analyze(context.Background(), AnalyzeOptions{
+		Path:     root,
+		NoMinAge: true,
+	})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	if res.Subtree != "" {
+		t.Errorf("expected empty subtree at root, got %q", res.Subtree)
+	}
+	if len(res.Files) == 0 {
+		t.Fatalf("expected results, got none")
+	}
+
+	var totalCommits int
+	for _, f := range res.Files {
+		totalCommits += f.Commits
+	}
+	if totalCommits == 0 {
+		t.Errorf("expected non-zero churn across files, got 0")
+	}
+}
+
+// TestAnalyze_Subdirectory exercises the bug fix: previously, running against
+// a subdirectory matched complexity (rel-to-scan-root) against churn
+// (rel-to-repo-root) and produced zero churn for every file.
+func TestAnalyze_Subdirectory_PreservesChurn(t *testing.T) {
+	root := initTestRepo(t)
+
+	res, err := Analyze(context.Background(), AnalyzeOptions{
+		Path:     filepath.Join(root, "internal"),
+		NoMinAge: true,
+	})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	if res.Subtree != "internal" {
+		t.Errorf("expected subtree=internal, got %q", res.Subtree)
+	}
+
+	if len(res.Files) == 0 {
+		t.Fatal("expected results in internal subtree, got none")
+	}
+
+	for _, f := range res.Files {
+		if !strings.HasPrefix(f.Path, "internal/") {
+			t.Errorf("expected path under internal/, got %q", f.Path)
+		}
+		if f.Commits == 0 {
+			t.Errorf("file %s has zero commits — subdirectory churn merge is broken", f.Path)
+		}
+	}
+}
+
+func TestRelSubtree(t *testing.T) {
+	tests := []struct {
+		name      string
+		repoRoot  string
+		absPath   string
+		want      string
+		wantError bool
+	}{
+		{name: "root itself", repoRoot: "/repo", absPath: "/repo", want: ""},
+		{name: "subdirectory", repoRoot: "/repo", absPath: "/repo/internal", want: "internal"},
+		{name: "nested file", repoRoot: "/repo", absPath: "/repo/internal/foo.go", want: "internal/foo.go"},
+		{name: "outside repo", repoRoot: "/repo", absPath: "/elsewhere", wantError: true},
+		{name: "parent of repo", repoRoot: "/repo", absPath: "/", wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := relSubtree(tt.repoRoot, tt.absPath)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAnalyze_NotAGitRepo(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := Analyze(context.Background(), AnalyzeOptions{
+		Path:     dir,
+		NoMinAge: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for non-git directory, got nil")
+	}
+}
