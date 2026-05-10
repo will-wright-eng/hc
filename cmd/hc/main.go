@@ -14,6 +14,12 @@ import (
 	"github.com/will-wright-eng/hc/internal/report"
 )
 
+// Populated at build time via -ldflags. Defaults make local `go run` honest.
+var (
+	version = "dev"
+	commit  = "none"
+)
+
 // autoDisableNoteText is the stderr message shown when the file age floor
 // auto-disables because --since is narrow. The rule itself lives in
 // internal/app; the message stays here as a CLI presentation concern.
@@ -76,6 +82,7 @@ func buildCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "hc",
 		Usage:     "Hot/Cold codebase analysis — churn × complexity hotspot matrix",
+		Version:   fmt.Sprintf("%s (%s)", version, commit),
 		ArgsUsage: "[path]",
 		Flags:     analyzeFlags(true),
 		Action:    runAnalyze,

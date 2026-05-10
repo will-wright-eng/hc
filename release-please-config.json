@@ -1,0 +1,18 @@
+{
+  "release-type": "go",
+  "packages": {
+    ".": {
+      "package-name": "hc",
+      "include-component-in-tag": false
+    }
+  },
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix",  "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "docs", "section": "Documentation", "hidden": true },
+    { "type": "test", "section": "Tests",         "hidden": true },
+    { "type": "chore","section": "Chores",        "hidden": true },
+    { "type": "refactor","section": "Refactors",  "hidden": true }
+  ]
+}
