@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/will-wright-eng/hc/compare/v1.0.0...v1.0.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* updating gha version ([#29](https://github.com/will-wright-eng/hc/issues/29)) ([497a898](https://github.com/will-wright-eng/hc/commit/497a89862fe163c8e6e95c1b8822c22b68ecc758))
+
 ## 1.0.0 (2026-05-10)
 
 
