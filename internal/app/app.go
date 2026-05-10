@@ -40,6 +40,11 @@ type AnalyzeOptions struct {
 	Decay bool
 	// NoMinAge forces the file age floor off regardless of Since.
 	NoMinAge bool
+	// FilesFrom is the projection filter: when non-empty, results are restricted
+	// to these repo-root-relative paths. Classification thresholds are still
+	// computed across the full corpus — only the output rows shrink. Paths not
+	// found in the analyzed tree are silently dropped.
+	FilesFrom []string
 	// Now is the reference time for time-sensitive analysis. Zero means time.Now().
 	Now time.Time
 }
@@ -111,6 +116,10 @@ func Analyze(_ context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 		scores = filterToSubtree(scores, subtree)
 	}
 
+	if len(opts.FilesFrom) > 0 {
+		scores = filterToFiles(scores, normalizeFilesFrom(opts.FilesFrom, repoRoot))
+	}
+
 	return AnalyzeResult{
 		Files:              scores,
 		RepoRoot:           repoRoot,
@@ -135,6 +144,46 @@ func relSubtree(repoRoot, absPath string) (string, error) {
 		return "", fmt.Errorf("path %s is outside the git repository at %s", absPath, repoRoot)
 	}
 	return rel, nil
+}
+
+// normalizeFilesFrom converts the raw --files-from input into a set of
+// repo-root-relative forward-slash paths matching the form internal/git and
+// internal/complexity use. Accepts ./foo.go, foo.go, and absolute paths inside
+// the repo. Blank entries and paths outside the repo are dropped.
+func normalizeFilesFrom(raw []string, repoRoot string) map[string]struct{} {
+	out := make(map[string]struct{}, len(raw))
+	for _, p := range raw {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if filepath.IsAbs(p) {
+			rel, err := filepath.Rel(repoRoot, p)
+			if err != nil {
+				continue
+			}
+			p = rel
+		}
+		p = filepath.ToSlash(filepath.Clean(p))
+		if p == "." || p == ".." || strings.HasPrefix(p, "../") {
+			continue
+		}
+		out[p] = struct{}{}
+	}
+	return out
+}
+
+// filterToFiles keeps scores whose path is in the given set. An empty set is a
+// no-op (caller is responsible for not calling with an empty filter when no
+// filter was requested).
+func filterToFiles(scores []analysis.FileScore, want map[string]struct{}) []analysis.FileScore {
+	out := scores[:0]
+	for _, s := range scores {
+		if _, ok := want[s.Path]; ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // filterToSubtree keeps scores whose path equals subtree or is nested under it.

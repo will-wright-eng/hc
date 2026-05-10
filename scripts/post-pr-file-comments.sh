@@ -2,24 +2,25 @@
 #
 # Post or update file-level hotspot review comments on a pull request.
 #
-# Usage: post-pr-file-comments.sh <hotspot-matches-tsv>
+# Usage: post-pr-file-comments.sh <hotspots-json>
 #
 # Required env: GH_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, HEAD_SHA
 #
-# The matches TSV is produced by filter-pr-hotspots.py. This script only
-# renders comment bodies and creates or updates GitHub PR review comments.
+# Input is the JSON produced by `hc analyze --json --files-from <changed.txt>`.
+# This script filters to hot-critical / cold-complex, renders comment bodies,
+# and creates or updates GitHub PR review comments.
 
 set -euo pipefail
 
-matches_tsv="${1:?hotspot matches TSV path required}"
+hotspots_json="${1:?hotspots JSON path required}"
 
 : "${GH_TOKEN:?GH_TOKEN must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 : "${PR_NUMBER:?PR_NUMBER must be set}"
 : "${HEAD_SHA:?HEAD_SHA must be set}"
 
-if [[ ! -f "$matches_tsv" ]]; then
-  echo "hotspot matches TSV not found: $matches_tsv" >&2
+if [[ ! -f "$hotspots_json" ]]; then
+  echo "hotspots JSON not found: $hotspots_json" >&2
   exit 1
 fi
 
@@ -28,11 +29,39 @@ command -v gh >/dev/null 2>&1 || {
   exit 1
 }
 
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is required" >&2
+  exit 1
+}
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 template_dir="${script_dir}/templates"
 
 body_file="$(mktemp)"
-trap 'rm -f "$body_file"' EXIT
+matches_tsv="$(mktemp)"
+trap 'rm -f "$body_file" "$matches_tsv"' EXIT
+
+# Filter to hot-critical / cold-complex, sort by quadrant priority then by
+# weighted_commits descending, and emit TSV for the read loop below. Missing
+# weighted_commits (no-decay runs) becomes "n/a" so the renderer can branch.
+jq -r '
+  map(select(.quadrant == "hot-critical" or .quadrant == "cold-complex"))
+  | sort_by(
+      (if .quadrant == "cold-complex" then 0 else 1 end),
+      -(.weighted_commits // .commits)
+    )
+  | .[]
+  | [
+      .path,
+      .quadrant,
+      .commits,
+      (.weighted_commits // "n/a"),
+      .lines,
+      .complexity,
+      .authors
+    ]
+  | @tsv
+' "$hotspots_json" > "$matches_tsv"
 
 if [[ ! -s "$matches_tsv" ]]; then
   echo "No changed files matched hot-critical or cold-complex base-branch hotspots"
@@ -63,22 +92,33 @@ render_body() {
   local authors="$7"
   local tag="$8"
 
-  cat "$template" > "$body_file"
+  local table_file
+  table_file="$(mktemp)"
   {
-    printf '\n\n'
-    printf '<details>\n'
-    printf '<summary>Hotspot details</summary>\n\n'
-    printf -- "- Base path: \`%s\`\n" "$path"
-    printf -- '- Commits: %s\n' "$commits"
+    printf '| Metric | Value |\n'
+    printf '| --- | --- |\n'
+    printf -- '| Base path | `%s` |\n' "$path"
+    printf -- '| Commits | %s |\n' "$commits"
     if [[ "$score" != "n/a" ]]; then
-      printf -- '- Score: %.1f\n' "$score"
+      printf -- '| Score | %.1f |\n' "$score"
     fi
-    printf -- '- Lines: %s\n' "$lines"
-    printf -- '- Complexity: %s\n' "$complexity"
-    printf -- '- Authors: %s\n' "$authors"
-    printf '\n</details>\n\n'
-    printf '%s\n' "$tag"
-  } >> "$body_file"
+    printf -- '| Lines | %s |\n' "$lines"
+    printf -- '| Complexity | %s |\n' "$complexity"
+    printf -- '| Authors | %s |\n' "$authors"
+  } > "$table_file"
+
+  awk -v table_file="$table_file" '
+    /<!-- hc-stats -->/ {
+      while ((getline line < table_file) > 0) print line
+      close(table_file)
+      next
+    }
+    { print }
+  ' "$template" > "$body_file"
+
+  rm -f "$table_file"
+
+  printf '\n%s\n' "$tag" >> "$body_file"
 }
 
 json_escape() {

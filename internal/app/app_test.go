@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/will-wright-eng/hc/internal/analysis"
 )
 
 // initTestRepo creates a temp git repo with two source files in different
@@ -161,6 +163,144 @@ func TestRelSubtree(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestAnalyze_FilesFrom_MediansInvariant pins down the projection-vs-scan
+// distinction: a file's quadrant when --files-from restricts output must
+// match its quadrant in an unfiltered run on the same tree. If the filter
+// accidentally short-circuits the walk, medians collapse and classifications
+// drift.
+func TestAnalyze_FilesFrom_MediansInvariant(t *testing.T) {
+	root := initTestRepo(t)
+
+	full, err := Analyze(context.Background(), AnalyzeOptions{
+		Path:     root,
+		NoMinAge: true,
+	})
+	if err != nil {
+		t.Fatalf("full analyze: %v", err)
+	}
+
+	want := map[string]string{}
+	for _, f := range full.Files {
+		want[f.Path] = f.Quadrant.String()
+	}
+
+	for path, quadrant := range want {
+		filtered, err := Analyze(context.Background(), AnalyzeOptions{
+			Path:      root,
+			NoMinAge:  true,
+			FilesFrom: []string{path},
+		})
+		if err != nil {
+			t.Fatalf("filtered analyze for %s: %v", path, err)
+		}
+		if len(filtered.Files) != 1 {
+			t.Fatalf("--files-from=%s: expected 1 row, got %d", path, len(filtered.Files))
+		}
+		if got := filtered.Files[0].Quadrant.String(); got != quadrant {
+			t.Errorf("quadrant for %s: filtered=%q full=%q (projection must not change classification)",
+				path, got, quadrant)
+		}
+	}
+}
+
+func TestAnalyze_FilesFrom_RowCount(t *testing.T) {
+	root := initTestRepo(t)
+
+	res, err := Analyze(context.Background(), AnalyzeOptions{
+		Path:      root,
+		NoMinAge:  true,
+		FilesFrom: []string{"internal/foo/foo.go", "cmd/main.go"},
+	})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(res.Files) != 2 {
+		t.Fatalf("expected 2 rows, got %d (%v)", len(res.Files), pathsOf(res.Files))
+	}
+}
+
+func TestAnalyze_FilesFrom_MissingPaths(t *testing.T) {
+	root := initTestRepo(t)
+
+	res, err := Analyze(context.Background(), AnalyzeOptions{
+		Path:      root,
+		NoMinAge:  true,
+		FilesFrom: []string{"does/not/exist.go"},
+	})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(res.Files) != 0 {
+		t.Fatalf("expected 0 rows for nonexistent path, got %d (%v)", len(res.Files), pathsOf(res.Files))
+	}
+}
+
+func TestAnalyze_FilesFrom_NormalizesPaths(t *testing.T) {
+	root := initTestRepo(t)
+
+	// Mix of forms: ./prefix, plain, and absolute.
+	res, err := Analyze(context.Background(), AnalyzeOptions{
+		Path:     root,
+		NoMinAge: true,
+		FilesFrom: []string{
+			"./internal/foo/foo.go",
+			"cmd/main.go",
+			filepath.Join(root, "internal/foo/bar.go"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(res.Files) != 3 {
+		t.Fatalf("expected 3 rows, got %d (%v)", len(res.Files), pathsOf(res.Files))
+	}
+}
+
+func TestNormalizeFilesFrom(t *testing.T) {
+	repo := "/repo"
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{name: "plain", in: []string{"a.go", "b/c.go"}, want: []string{"a.go", "b/c.go"}},
+		{name: "dot prefix", in: []string{"./a.go"}, want: []string{"a.go"}},
+		{name: "absolute inside repo", in: []string{"/repo/a.go"}, want: []string{"a.go"}},
+		{name: "blank dropped", in: []string{"", "  ", "a.go"}, want: []string{"a.go"}},
+		{name: "outside repo dropped", in: []string{"/elsewhere/a.go"}, want: nil},
+		{name: "dot dropped", in: []string{"."}, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeFilesFrom(tt.in, repo)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", keysOf(got), tt.want)
+			}
+			for _, w := range tt.want {
+				if _, ok := got[w]; !ok {
+					t.Errorf("missing %q in %v", w, keysOf(got))
+				}
+			}
+		})
+	}
+}
+
+func pathsOf(files []analysis.FileScore) []string {
+	out := make([]string, len(files))
+	for i, f := range files {
+		out[i] = f.Path
+	}
+	return out
+}
+
+func keysOf(m map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 func TestAnalyze_NotAGitRepo(t *testing.T) {

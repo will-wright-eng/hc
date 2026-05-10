@@ -1,7 +1,6 @@
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
 HOTSPOTS_JSON ?= hotspots.json
 CHANGED_TXT ?= changed.txt
-HOTSPOT_MATCHES_TSV ?= hotspot-matches.tsv
 
 VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -38,11 +37,11 @@ pr-changed-files: ## write changed.txt for BASE_SHA...HEAD_SHA
 	@test -n "$${HEAD_SHA:-}" || (echo "HEAD_SHA is required" >&2; exit 1)
 	git diff --name-only --diff-filter=ACM "$${BASE_SHA}...$${HEAD_SHA}" -- > "$(CHANGED_TXT)"
 
-pr-hotspot-matches: ## write hotspot-matches.tsv from hotspots.json and changed.txt
-	python3 $(REPO_ROOT)/scripts/filter-pr-hotspots.py "$(HOTSPOTS_JSON)" "$(CHANGED_TXT)" > "$(HOTSPOT_MATCHES_TSV)"
+pr-hotspots-json: ## write hotspots.json by analyzing ../hc-base restricted to changed.txt
+	$(REPO_ROOT)/hc analyze --json --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
 
-pr-file-comments: ## post/update PR file hotspot comments from hotspot-matches.tsv
-	$(REPO_ROOT)/scripts/post-pr-file-comments.sh "$(HOTSPOT_MATCHES_TSV)"
+pr-file-comments: ## post/update PR file hotspot comments from hotspots.json
+	$(REPO_ROOT)/scripts/post-pr-file-comments.sh "$(HOTSPOTS_JSON)"
 
 eval-ignore: ## eval `hc prompt ignore | claude -p` coverage (TRIALS=N, OUTDIR=path)
 	uv run --script $(REPO_ROOT)/scripts/eval_ignore_prompt.py -n 5 -o /tmp/eval-ignore/
