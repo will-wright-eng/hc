@@ -106,6 +106,24 @@ func TestAnalyze_MinAgeFiltersYoungFiles(t *testing.T) {
 	}
 }
 
+func TestAnalyzeWithOptions_UsesNowForMinAge(t *testing.T) {
+	now := time.Date(2020, 1, 10, 12, 0, 0, 0, time.UTC)
+	churns := []git.FileChurn{
+		{Path: "young-at-fixed-now.go", Commits: 5, WeightedCommits: 5, FirstSeen: now.Add(-3 * 24 * time.Hour)},
+	}
+	complexities := []complexity.FileComplexity{
+		{Path: "young-at-fixed-now.go", Lines: 100, Complexity: 100},
+	}
+
+	scores := AnalyzeWithOptions(churns, complexities, Options{
+		MinAge: 14 * 24 * time.Hour,
+		Now:    now,
+	})
+	if len(scores) != 0 {
+		t.Fatalf("expected fixed Now to filter the young file, got %d scores", len(scores))
+	}
+}
+
 func TestAnalyze_MinAgeMedianUnaffected(t *testing.T) {
 	// Young file should still count toward the median, so the surviving
 	// older files are classified against the full distribution.

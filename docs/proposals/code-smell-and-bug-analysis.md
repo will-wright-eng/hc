@@ -4,13 +4,15 @@
 
 This document records the open issues from a focused review of the `hc` CLI
 codebase. Items that have already been fixed (subdirectory churn merge, unknown
-output format validation, the CLI/orchestration split into `internal/app`, and
-full gitignore semantics for `.hcignore` via `sabhiram/go-gitignore`) have been
-removed; what remains are the partial and unaddressed items.
+output format validation, the CLI/orchestration split into `internal/app`,
+gitignore-style semantics for `.hcignore` via the internal matcher ported from
+`sabhiram/go-gitignore`, and internal options structs for analysis, git
+extraction, and complexity scanning) have been removed; what remains are the
+partial and unaddressed items.
 
-The main remaining growth risks are git extraction, hard-coded policy in the
-complexity scanner, and an implicit JSON contract shared between `output` and
-`report`.
+The main remaining growth risks are git extraction, CLI-level configurability
+around complexity scanning, and an implicit JSON contract shared between
+`output` and `report`.
 
 ---
 
@@ -19,23 +21,27 @@ complexity scanner, and an implicit JSON contract shared between `output` and
 ### Git access is hard to cancel, test, and scale
 
 Stderr is now captured for `git rev-parse --show-toplevel` in
-`internal/git/repo_root.go`, but the rest of the git extraction path is
-unchanged.
+`internal/git/repo_root.go`, and `git.LogWithOptions` now carries extraction
+settings plus an injectable `Now` for decay weighting. The command execution
+path itself is still unchanged.
 
 Current pattern:
 
 - `git log --name-only` for file churn.
 - `git log --name-only` again for authors.
 - `git log --diff-filter=R --name-status` for renames.
-- `exec.Command` instead of `exec.CommandContext`.
+- `exec.Command` instead of `exec.CommandContext` in `RepoRoot`,
+  `gitLogFiles`, `gitLogAuthors`, `DetectRenames`, and the test helper
+  `CountAuthors`.
 - `cmd.Output()` reads the full output before parsing.
 - `app.Analyze` accepts a `context.Context` but does not propagate it — the
   doc comment in `internal/app/app.go` calls this out explicitly.
 
 Recommended direction:
 
-- Thread `context.Context` through `git.Log`, `gitLogFiles`,
-  `gitLogAuthors`, and `DetectRenames`, and use `exec.CommandContext`.
+- Thread `context.Context` through `RepoRoot`, `git.LogWithOptions`,
+  `gitLogFiles`, `gitLogAuthors`, and `DetectRenames`, and use
+  `exec.CommandContext`.
 - Capture stderr on the remaining git invocations so user-facing errors are
   actionable.
 - Consider streaming parsers for large repositories.
@@ -45,17 +51,19 @@ Recommended direction:
 This is not urgent for small repositories, but it is one of the first places
 large-repo users will feel friction.
 
-### Complexity policy is hard-coded
+### Complexity policy is internal-only
 
-The complexity scanner currently owns several policies directly:
+The complexity scanner now has `complexity.Options`, so callers can override
+ignore matching, directory skipping, source-file detection, and the scanner
+function. The default policy still lives in `internal/complexity`:
 
 - Which directories are skipped.
 - Which file extensions count as source-like files.
 - Which comment prefixes are ignored.
-- Indentation as the only complexity driver.
+- Indent-sum as the default complexity driver.
 
-This is pragmatic for the current tool, but it creates friction if the project
-adds:
+This is pragmatic for the current tool, but external configurability is still
+not exposed. That creates friction if the project adds:
 
 - Cyclomatic complexity.
 - Language-specific analyzers.
@@ -64,12 +72,14 @@ adds:
 
 Recommended direction:
 
-- Introduce a small `complexity.Options` struct.
-- Move file inclusion and directory skip policy behind explicit options.
-- Keep indentation as the default analyzer, but make the analyzer choice
-  explicit in the code.
+- Decide which complexity options, if any, should become CLI/config surface.
+- Keep the default policy conservative until there is a concrete user-facing
+  need for configuration.
+- If cyclomatic or language-specific analyzers are added, route them through
+  the existing scanner option rather than branching inside `WalkWithOptions`.
 
-This does not require a plugin system yet. A small options object is enough.
+This does not require a plugin system yet. The internal options object is
+enough for the next increment.
 
 ### Output schema is implicit and duplicated
 
@@ -100,34 +110,32 @@ Recommended direction:
 
 This is a small fix with low risk.
 
-### Time and policy are embedded in pure analysis paths
+### Report rendering embeds the current date
 
 The min-age policy decision was lifted into `internal/app` via
-`EffectiveMinAge`, which is good, but the time source is still hard-coded:
+`EffectiveMinAge`, and `Now` is now injectable for git decay and analysis via
+`git.LogOptions` and `analysis.Options`. The remaining hard-coded time source is
+report rendering:
 
-- `analysis.Analyze` calls `time.Now()` when applying the min-age floor.
 - `report.Render` embeds the current date.
 
 Recommended direction:
 
-- For analysis, pass `now` through options or use a small clock parameter in
-  the orchestration layer.
 - For report rendering, consider passing generation metadata explicitly if
   reproducible output matters.
 
-This is mostly a testability and reproducibility issue, not a functional bug.
+This is mostly a reproducibility issue, not a functional bug.
 
 ---
 
 ## Recommended Fix Order
 
-1. Add options structs for analysis, git extraction, and complexity scanning.
-2. Harden report markdown escaping.
-3. Thread `context.Context` through git extraction and capture stderr on the
+1. Harden report markdown escaping.
+2. Thread `context.Context` through git extraction and capture stderr on the
    remaining invocations; revisit streaming when large repos become a target.
-4. Inject `now` into `analysis.Analyze` and `report.Render` so time is no
-   longer baked into pure paths.
-5. Promote the JSON output to a shared DTO with a schema version.
+3. Inject generation metadata into `report.Render` if reproducible reports
+   become important.
+4. Promote the JSON output to a shared DTO with a schema version.
 
 ---
 

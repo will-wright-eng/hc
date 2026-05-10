@@ -30,21 +30,45 @@ type commitInfo struct {
 	Files []string
 }
 
+// LogOptions controls git history extraction.
+type LogOptions struct {
+	// RepoPath is the root of the git repository.
+	RepoPath string
+	// Since is an optional time window (e.g. "6 months") passed to git --since.
+	Since string
+	// Ignore filters resolved paths from the final churn result.
+	Ignore *ignore.Matcher
+	// Decay enables recency weighting in churn computation.
+	Decay bool
+	// Now is the reference time for decay weighting. Zero means time.Now().
+	Now time.Time
+}
+
 // Log runs git log and returns per-file churn data.
 // repoPath is the root of the git repository.
 // since is an optional time window (e.g. "6 months") passed to --since.
 func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileChurn, error) {
-	commitFiles, err := gitLogFiles(repoPath, since)
+	return LogWithOptions(LogOptions{
+		RepoPath: repoPath,
+		Since:    since,
+		Ignore:   ig,
+		Decay:    decay,
+	})
+}
+
+// LogWithOptions runs git log and returns per-file churn data.
+func LogWithOptions(opts LogOptions) ([]FileChurn, error) {
+	commitFiles, err := gitLogFiles(opts.RepoPath, opts.Since)
 	if err != nil {
 		return nil, err
 	}
 
-	authorMap, err := gitLogAuthors(repoPath, since)
+	authorMap, err := gitLogAuthors(opts.RepoPath, opts.Since)
 	if err != nil {
 		return nil, err
 	}
 
-	renames, err := DetectRenames(repoPath, since)
+	renames, err := DetectRenames(opts.RepoPath, opts.Since)
 	if err != nil {
 		return nil, fmt.Errorf("detecting renames: %w", err)
 	}
@@ -56,9 +80,12 @@ func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileC
 		firstSeen       time.Time
 	}
 
-	now := time.Now()
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
 	var halfLifeDays float64
-	if decay {
+	if opts.Decay {
 		halfLifeDays = defaultHalfLifeDays(commitFiles, now)
 	}
 
@@ -113,7 +140,7 @@ func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileC
 	// Build result, applying ignore filter on resolved paths.
 	result := make([]FileChurn, 0, len(m))
 	for path, s := range m {
-		if ig.Match(path) {
+		if opts.Ignore.Match(path) {
 			continue
 		}
 		result = append(result, FileChurn{

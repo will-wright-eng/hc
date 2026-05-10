@@ -15,10 +15,42 @@ type FileComplexity struct {
 	Complexity int // indent-sum across the same lines
 }
 
+// Options controls file discovery and complexity scanning.
+type Options struct {
+	// Ignore filters repo-relative paths before scanning.
+	Ignore *ignore.Matcher
+	// SkipDir decides whether a directory basename should be skipped. Nil uses
+	// the default hidden/common dependency directory policy.
+	SkipDir func(name string) bool
+	// IsSourceFile decides whether a file basename should be scanned. Nil uses
+	// the default source-like extension and filename policy.
+	IsSourceFile func(name string) bool
+	// ScanFile computes line count and complexity for a file. Nil uses indent-sum.
+	ScanFile func(path string) (lines, complexity int, err error)
+}
+
 // Walk traverses the file tree at root and computes per-file line count and
 // indent-sum complexity. It skips hidden and common non-source directories.
 func Walk(root string, ig *ignore.Matcher) ([]FileComplexity, error) {
+	return WalkWithOptions(root, Options{Ignore: ig})
+}
+
+// WalkWithOptions traverses the file tree at root and computes per-file
+// complexity using the supplied policy options.
+func WalkWithOptions(root string, opts Options) ([]FileComplexity, error) {
 	var results []FileComplexity
+	skipDir := opts.SkipDir
+	if skipDir == nil {
+		skipDir = shouldSkipDir
+	}
+	isSourceFile := opts.IsSourceFile
+	if isSourceFile == nil {
+		isSourceFile = isSourceFileDefault
+	}
+	scan := opts.ScanFile
+	if scan == nil {
+		scan = scanFile
+	}
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -32,13 +64,13 @@ func Walk(root string, ig *ignore.Matcher) ([]FileComplexity, error) {
 
 		if info.IsDir() {
 			base := info.Name()
-			if shouldSkipDir(base) {
+			if skipDir(base) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		if ig.Match(rel) {
+		if opts.Ignore.Match(rel) {
 			return nil
 		}
 
@@ -46,7 +78,7 @@ func Walk(root string, ig *ignore.Matcher) ([]FileComplexity, error) {
 			return nil
 		}
 
-		lines, indentSum, err := scanFile(path)
+		lines, indentSum, err := scan(path)
 		if err != nil {
 			return nil // skip files we can't read
 		}
@@ -91,6 +123,10 @@ var sourceExtensions = map[string]bool{
 }
 
 func isSourceFile(name string) bool {
+	return isSourceFileDefault(name)
+}
+
+func isSourceFileDefault(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
 	if sourceExtensions[ext] {
 		return true

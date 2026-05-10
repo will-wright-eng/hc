@@ -63,6 +63,81 @@ func TestWalk(t *testing.T) {
 	}
 }
 
+func TestWalkWithOptions_CustomSourceFilePolicy(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "a.go"), "package a\n")
+	writeTestFile(t, filepath.Join(dir, "config.custom"), "enabled = true\n")
+
+	results, err := WalkWithOptions(dir, Options{
+		IsSourceFile: func(name string) bool {
+			return name == "config.custom"
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected one result, got %d: %v", len(results), results)
+	}
+	if results[0].Path != "config.custom" {
+		t.Fatalf("expected custom source file, got %q", results[0].Path)
+	}
+}
+
+func TestWalkWithOptions_CustomSkipDirPolicy(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "node_modules")
+	if err := os.MkdirAll(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(nested, "a.go"), "package a\n")
+
+	results, err := WalkWithOptions(dir, Options{
+		SkipDir: func(name string) bool {
+			return false
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	paths := make(map[string]bool)
+	for _, r := range results {
+		paths[r.Path] = true
+	}
+	if !paths["node_modules/a.go"] {
+		t.Fatalf("expected custom SkipDir policy to include node_modules/a.go, got %v", paths)
+	}
+}
+
+func TestWalkWithOptions_CustomScanner(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "a.go"), "package a\n")
+
+	results, err := WalkWithOptions(dir, Options{
+		ScanFile: func(path string) (int, int, error) {
+			return 7, 42, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected one result, got %d", len(results))
+	}
+	if results[0].Lines != 7 || results[0].Complexity != 42 {
+		t.Fatalf("custom scanner not used: %+v", results[0])
+	}
+}
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestShouldSkipDir(t *testing.T) {
 	if !shouldSkipDir(".git") {
 		t.Error("should skip .git")
