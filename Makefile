@@ -3,6 +3,10 @@ HOTSPOTS_JSON ?= hotspots.json
 CHANGED_TXT ?= changed.txt
 HOTSPOT_MATCHES_TSV ?= hotspot-matches.tsv
 
+VERSION ?= dev
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+LDFLAGS  = -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
+
 .PHONY: $(shell sed -n -e '/^$$/ { n ; /^[^ .\#][^ ]*:/ { s/:.*$$// ; p ; } ; }' $(MAKEFILE_LIST))
 
 .DEFAULT_GOAL := help
@@ -12,7 +16,7 @@ help: ## list make commands
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 build: ## build the hc binary
-	go build -o hc $(REPO_ROOT)/cmd/hc
+	go build -ldflags "$(LDFLAGS)" -o hc $(REPO_ROOT)/cmd/hc
 
 test: ## run tests
 	go test $(REPO_ROOT)/...
