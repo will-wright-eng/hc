@@ -2,27 +2,20 @@
 #
 # Post or update file-level hotspot review comments on a pull request.
 #
-# Usage: post-pr-file-comments.sh <hotspots-json>
+# Usage: hc md comment < hotspots.json | post-pr-file-comments.sh
+#
+# Stdin is NDJSON: one {path, quadrant, tag, body} object per line, as
+# produced by `hc md comment`. This script does no filtering or rendering —
+# it only does the GitHub-API find-or-create.
 #
 # Required env: GH_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, HEAD_SHA
-#
-# Input is the JSON produced by `hc analyze --json --files-from <changed.txt>`.
-# This script filters to hot-critical / cold-complex, renders comment bodies,
-# and creates or updates GitHub PR review comments.
 
 set -euo pipefail
-
-hotspots_json="${1:?hotspots JSON path required}"
 
 : "${GH_TOKEN:?GH_TOKEN must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 : "${PR_NUMBER:?PR_NUMBER must be set}"
 : "${HEAD_SHA:?HEAD_SHA must be set}"
-
-if [[ ! -f "$hotspots_json" ]]; then
-  echo "hotspots JSON not found: $hotspots_json" >&2
-  exit 1
-fi
 
 command -v gh >/dev/null 2>&1 || {
   echo "gh is required" >&2
@@ -34,92 +27,8 @@ command -v jq >/dev/null 2>&1 || {
   exit 1
 }
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-template_dir="${script_dir}/templates"
-
 body_file="$(mktemp)"
-matches_tsv="$(mktemp)"
-trap 'rm -f "$body_file" "$matches_tsv"' EXIT
-
-# Filter to hot-critical / cold-complex, sort by quadrant priority then by
-# weighted_commits descending, and emit TSV for the read loop below. Missing
-# weighted_commits (no-decay runs) becomes "n/a" so the renderer can branch.
-jq -r '
-  map(select(.quadrant == "hot-critical" or .quadrant == "cold-complex"))
-  | sort_by(
-      (if .quadrant == "cold-complex" then 0 else 1 end),
-      -(.weighted_commits // .commits)
-    )
-  | .[]
-  | [
-      .path,
-      .quadrant,
-      .commits,
-      (.weighted_commits // "n/a"),
-      .lines,
-      .complexity,
-      .authors
-    ]
-  | @tsv
-' "$hotspots_json" > "$matches_tsv"
-
-if [[ ! -s "$matches_tsv" ]]; then
-  echo "No changed files matched hot-critical or cold-complex base-branch hotspots"
-  exit 0
-fi
-
-template_for_quadrant() {
-  case "$1" in
-    hot-critical)
-      printf '%s\n' "${template_dir}/hotcritical.md"
-      ;;
-    cold-complex)
-      printf '%s\n' "${template_dir}/coldcomplex.md"
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-render_body() {
-  local template="$1"
-  local path="$2"
-  local commits="$3"
-  local score="$4"
-  local lines="$5"
-  local complexity="$6"
-  local authors="$7"
-  local tag="$8"
-
-  local table_file
-  table_file="$(mktemp)"
-  {
-    printf '| Metric | Value |\n'
-    printf '| --- | --- |\n'
-    printf -- '| Base path | `%s` |\n' "$path"
-    printf -- '| Commits | %s |\n' "$commits"
-    if [[ "$score" != "n/a" ]]; then
-      printf -- '| Score | %.1f |\n' "$score"
-    fi
-    printf -- '| Lines | %s |\n' "$lines"
-    printf -- '| Complexity | %s |\n' "$complexity"
-    printf -- '| Authors | %s |\n' "$authors"
-  } > "$table_file"
-
-  awk -v table_file="$table_file" '
-    /<!-- hc-stats -->/ {
-      while ((getline line < table_file) > 0) print line
-      close(table_file)
-      next
-    }
-    { print }
-  ' "$template" > "$body_file"
-
-  rm -f "$table_file"
-
-  printf '\n%s\n' "$tag" >> "$body_file"
-}
+trap 'rm -f "$body_file"' EXIT
 
 json_escape() {
   local value="$1"
@@ -134,7 +43,6 @@ json_escape() {
 existing_comment_id() {
   local tag="$1"
   local escaped_tag
-
   escaped_tag="$(json_escape "$tag")"
   gh api --paginate \
     -H "Accept: application/vnd.github+json" \
@@ -147,20 +55,14 @@ existing_comment_id() {
 created=0
 updated=0
 
-while IFS=$'\t' read -r path quadrant commits score lines complexity authors; do
-  [[ -n "$path" ]] || continue
+while IFS= read -r entry; do
+  [[ -n "$entry" ]] || continue
 
-  template="$(template_for_quadrant "$quadrant")"
-  if [[ ! -f "$template" ]]; then
-    echo "template not found for ${quadrant}: ${template}" >&2
-    exit 1
-  fi
-
-  tag="<!-- hc-pr-comment:${path} -->"
-  render_body "$template" "$path" "$commits" "$score" "$lines" "$complexity" "$authors" "$tag"
+  path="$(jq -r '.path' <<<"$entry")"
+  tag="$(jq -r '.tag' <<<"$entry")"
+  jq -r '.body' <<<"$entry" >"$body_file"
 
   existing_id="$(existing_comment_id "$tag")"
-
   if [[ -n "$existing_id" ]]; then
     echo "Updating hotspot review comment ${existing_id} for ${path}"
     gh api --method PATCH \
@@ -181,6 +83,11 @@ while IFS=$'\t' read -r path quadrant commits score lines complexity authors; do
       -f subject_type=file >/dev/null
     created=$((created + 1))
   fi
-done < "$matches_tsv"
+done
+
+if [[ "$created" -eq 0 && "$updated" -eq 0 ]]; then
+  echo "No changed files matched hot-critical or cold-complex base-branch hotspots"
+  exit 0
+fi
 
 echo "Hotspot file comments complete: ${created} created, ${updated} updated"

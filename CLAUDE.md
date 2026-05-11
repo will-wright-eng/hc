@@ -48,7 +48,8 @@ internal/output/         Formats results as table/JSON/CSV (LINES + COMPLEXITY c
 internal/ignore/         Gitignore-style pattern matching; loads .hcignore files
 internal/md/             Markdown renderers: report.go (analysis JSON → markdown, with
                          UpsertFile for marker-bounded injection); ignore.go + summary.go
-                         (LLM prompt for .hcignore generation, template in templates/)
+                         (LLM prompt for .hcignore generation); comment.go (per-file PR
+                         comment NDJSON, dynamic stats table). Templates in templates/.
 ```
 
 - **Threshold strategy**: median (p50) of commits and lines across all files — self-adaptive, no configuration needed.

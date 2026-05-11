@@ -74,7 +74,7 @@ Run `hc` on every PR and post a sticky comment with the report. See [`.github/wo
 - run: ./hc md report --collapsible --input hotspots.json --output report.md
 ```
 
-This repo also includes [`.github/workflows/pr-file-comments.yml`](.github/workflows/pr-file-comments.yml), which analyzes the PR base branch and posts file-level review comments for changed files that were already `hot-critical` or `cold-complex`. The workflow calls `make pr-changed-files`, `make pr-hotspots-json`, and `make pr-file-comments`; the projection filter uses `hc analyze --files-from changed.txt`, the comment text lives in [`scripts/templates/`](scripts/templates/), and the posting logic lives in [`scripts/post-pr-file-comments.sh`](scripts/post-pr-file-comments.sh).
+This repo also includes [`.github/workflows/pr-file-comments.yml`](.github/workflows/pr-file-comments.yml), which analyzes the PR base branch and posts file-level review comments for changed files that were already `hot-critical` or `cold-complex`. The workflow calls `make pr-changed-files`, `make pr-hotspots-json`, and `make pr-file-comments`; the projection filter uses `hc analyze --files-from changed.txt`, comment bodies are rendered by `hc md comment` (templates in [`internal/md/templates/comment/`](internal/md/templates/comment/)), and the posting logic lives in [`scripts/post-pr-file-comments.sh`](scripts/post-pr-file-comments.sh).
 
 Requires `pull-requests: write` permission so the workflow can comment.
 

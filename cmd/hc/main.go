@@ -135,6 +135,27 @@ func buildCommand() *cli.Command {
 						Usage:  "Emit a prompt that asks an LLM to generate a .hcignore file",
 						Action: runMdIgnore,
 					},
+					{
+						Name:  "comment",
+						Usage: "Render per-file PR comment bodies as NDJSON (one entry per line)",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:    "input",
+								Aliases: []string{"i"},
+								Usage:   "Path to JSON file (default: stdin)",
+							},
+							&cli.StringFlag{
+								Name:    "output",
+								Aliases: []string{"o"},
+								Usage:   "Write NDJSON to FILE (default: stdout)",
+							},
+							&cli.StringSliceFlag{
+								Name:  "quadrant",
+								Usage: "Restrict to one or more quadrants (default: hot-critical, cold-complex)",
+							},
+						},
+						Action: runMdComment,
+					},
 				},
 			},
 		},
@@ -229,8 +250,23 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	return output.FormatFiles(os.Stdout, result.Files, format, result.Decay)
 }
 
+// openJSONInput returns the reader for `-i FILE`, falling back to stdin with
+// a TTY hint. Caller must Close the returned reader.
+func openJSONInput(cmd *cli.Command) (io.ReadCloser, error) {
+	if path := cmd.String("input"); path != "" {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("opening input: %w", err)
+		}
+		return f, nil
+	}
+	if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice != 0 {
+		fmt.Fprintln(os.Stderr, `reading JSON from stdin... (use --input or pipe from "hc analyze --json")`)
+	}
+	return io.NopCloser(os.Stdin), nil
+}
+
 func runReport(ctx context.Context, cmd *cli.Command) error {
-	inputPath := cmd.String("input")
 	outputPath := cmd.String("output")
 	upsertPath := cmd.String("upsert")
 
@@ -238,20 +274,11 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("--output and --upsert are mutually exclusive")
 	}
 
-	var input *os.File
-	if inputPath != "" {
-		f, err := os.Open(inputPath)
-		if err != nil {
-			return fmt.Errorf("opening input: %w", err)
-		}
-		defer func() { _ = f.Close() }()
-		input = f
-	} else {
-		if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice != 0 {
-			fmt.Fprintln(os.Stderr, `reading JSON from stdin... (use --input or pipe from "hc analyze --json")`)
-		}
-		input = os.Stdin
+	input, err := openJSONInput(cmd)
+	if err != nil {
+		return err
 	}
+	defer func() { _ = input.Close() }()
 
 	var buf bytes.Buffer
 	if err := md.Render(input, &buf, cmd.Bool("collapsible")); err != nil {
@@ -289,4 +316,27 @@ func runMdIgnore(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return md.RenderIgnore(repoRoot, os.Stdout)
+}
+
+func runMdComment(ctx context.Context, cmd *cli.Command) error {
+	input, err := openJSONInput(cmd)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = input.Close() }()
+
+	var out io.Writer = os.Stdout
+	if outputPath := cmd.String("output"); outputPath != "" {
+		f, err := os.Create(outputPath)
+		if err != nil {
+			return fmt.Errorf("opening output: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		out = f
+	}
+
+	opts := md.CommentOpts{
+		Quadrants: cmd.StringSlice("quadrant"),
+	}
+	return md.RenderComments(input, out, opts)
 }
