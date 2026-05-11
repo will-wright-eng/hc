@@ -28,14 +28,11 @@ jobs:
       - name: Prepare base worktree
         run: git worktree add --detach ../hc-base "$BASE_SHA"
 
-      - name: Analyze base branch
-        run: ./hc analyze --json ../hc-base > hotspots.json
-
       - name: Determine changed files
         run: make pr-changed-files
 
-      - name: Match changed hotspots
-        run: make pr-hotspot-matches
+      - name: Analyze base branch (restricted to changed files)
+        run: make pr-hotspots-json
 
       - name: Post per-file hotspot comments
         env:

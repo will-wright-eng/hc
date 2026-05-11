@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 	"github.com/will-wright-eng/hc/internal/app"
@@ -63,6 +66,11 @@ func analyzeFlags(hidden bool) []cli.Flag {
 		&cli.BoolFlag{
 			Name:   "no-min-age",
 			Usage:  "Disable the 14-day file age floor",
+			Hidden: hidden,
+		},
+		&cli.StringFlag{
+			Name:   "files-from",
+			Usage:  "Restrict output to paths listed in FILE (one per line; \"-\" reads stdin)",
 			Hidden: hidden,
 		},
 	}
@@ -154,6 +162,37 @@ func resolvePathArg(cmd *cli.Command) string {
 	return path
 }
 
+// readFilesFrom reads a newline-delimited list of paths from FILE, or from
+// stdin when src is "-". Blank lines are dropped; lines are trimmed of trailing
+// whitespace. No further parsing — keep the contract small so
+// `git diff --name-only` output works as-is.
+func readFilesFrom(src string, stdin io.Reader) ([]string, error) {
+	var r io.Reader
+	if src == "-" {
+		r = stdin
+	} else {
+		f, err := os.Open(src)
+		if err != nil {
+			return nil, fmt.Errorf("opening --files-from: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		r = f
+	}
+	var paths []string
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := strings.TrimRight(scanner.Text(), " \t\r")
+		if line == "" {
+			continue
+		}
+		paths = append(paths, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading --files-from: %w", err)
+	}
+	return paths, nil
+}
+
 // resolveFormat handles the --json shorthand and its conflict with --output.
 func resolveFormat(cmd *cli.Command) (string, error) {
 	format := cmd.String("output")
@@ -175,12 +214,21 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	var filesFrom []string
+	if src := cmd.String("files-from"); src != "" {
+		filesFrom, err = readFilesFrom(src, os.Stdin)
+		if err != nil {
+			return err
+		}
+	}
+
 	opts := app.AnalyzeOptions{
-		Path:     resolvePathArg(cmd),
-		Since:    cmd.String("since"),
-		Excludes: cmd.StringSlice("exclude"),
-		Decay:    !cmd.Bool("no-decay"),
-		NoMinAge: cmd.Bool("no-min-age"),
+		Path:      resolvePathArg(cmd),
+		Since:     cmd.String("since"),
+		Excludes:  cmd.StringSlice("exclude"),
+		Decay:     !cmd.Bool("no-decay"),
+		NoMinAge:  cmd.Bool("no-min-age"),
+		FilesFrom: filesFrom,
 	}
 
 	result, err := app.Analyze(ctx, opts)
