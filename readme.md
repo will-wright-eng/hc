@@ -84,8 +84,3 @@ Requires `pull-requests: write` permission so the workflow can comment.
 ```sh
 hc prompt ignore | claude -p > .hcignore
 ```
-
-| Flag | Description |
-|------|-------------|
-| `--max-files` | Cap file listing in repo summary (default: 200) |
-| `--no-summary` | Omit the repo summary from the prompt |
