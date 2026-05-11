@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/will-wright-eng/hc/compare/v1.0.0...v1.1.0) (2026-05-11)
+
+
+### Features
+
+* from-file flag for git diff name only list ([#31](https://github.com/will-wright-eng/hc/issues/31)) ([c408a1e](https://github.com/will-wright-eng/hc/commit/c408a1e67b980349626185e32639348eb149255c))
+
+
+### Bug Fixes
+
+* updating gha version ([#29](https://github.com/will-wright-eng/hc/issues/29)) ([497a898](https://github.com/will-wright-eng/hc/commit/497a89862fe163c8e6e95c1b8822c22b68ecc758))
+
 ## 1.0.0 (2026-05-10)
 
 
