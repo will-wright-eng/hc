@@ -30,14 +30,13 @@ Per the ergonomics doc (#5: single-word leaves), the verb is `comment`, not `pr-
     --format FORMAT       ndjson|json|tar (default: ndjson) — see "Batch Output" below
     --quadrant QUADRANT   Repeatable. Restrict to one or more quadrants
                           (default: hot-critical,cold-complex)
-    --limit N             Cap output to top N entries by priority
-    --min-complexity N    Floor — only emit entries with complexity >= N
-                          (addresses proposal 002 "Threshold tuning" open question)
 ```
 
-Input contract matches all other `md` subcommands (proposal 006): analyze JSON via `-i` or stdin.
+Input contract matches `hc md report` (proposal 006): analyze JSON via `-i` or stdin. (`hc md ignore` deliberately doesn't take JSON — see 006 §"Input contract" — so this is the second JSON-consuming `md` subcommand, not a universal rule.)
 
-The quadrant priority sort (cold-complex first, then hot-critical, then by `weighted_commits` desc) and the idempotency-tag generation (`<!-- hc-pr-comment:{path} -->`) move from `scripts/post-pr-file-comments.sh` into the Go renderer.
+`hc md comment` is designed against the default `hc analyze --json` shape, which has decay enabled and `weighted_commits` populated. Consumers running `--no-decay` upstream are out of scope for v1.
+
+The quadrant priority sort (hot-critical first, then cold-complex, then by `weighted_commits` desc) and the idempotency-tag generation (`<!-- hc-pr-comment:{path} -->`) move from `scripts/post-pr-file-comments.sh` into the Go renderer. This matches the canonical quadrant order used everywhere else in `hc` (CLAUDE.md: HotCritical → HotSimple → ColdComplex → ColdSimple); the current shell's cold-complex-first ordering is treated as an accidental drift, not a deliberate inversion.
 
 ---
 
@@ -80,14 +79,17 @@ The two templates (`scripts/templates/coldcomplex.md`, `scripts/templates/hotcri
 
 ```
 internal/md/templates/
-  report.md
   ignore.md
   comment/
     coldcomplex.md
     hotcritical.md
 ```
 
-The `<!-- hc-stats -->` substitution that the current awk step does moves into the Go renderer. Templates stay plain markdown so wording is reviewable in diffs (proposal 002 §"File Layout").
+(No `report.md` — report rendering stays inline, per 006 §"File Layout".)
+
+The `<!-- hc-stats -->` substitution that the current awk step does moves into the Go renderer. The placeholder is replaced with a markdown table rendered **dynamically from the analyze JSON entry** — no hardcoded field list. Whatever keys the entry carries become rows, in JSON-field order; absent fields are skipped. This keeps the renderer in lockstep with `hc analyze --json` as that schema evolves.
+
+Templates stay plain markdown so wording is reviewable in diffs (proposal 002 §"File Layout").
 
 `scripts/templates/` is removed.
 
@@ -123,9 +125,7 @@ Pulling these into `hc` would mean adopting an HTTP client, an auth surface, and
 
 ## Open Questions
 
-- **Tag placement.** The idempotency tag is currently appended to the body just before posting. With `hc` producing both `tag` and `body`, the tag is already embedded in `body` (so the find-by-tag search against existing comments works). Recommended: `tag` at top level *and* embedded in `body`. Top-level is for the shell loop; the embed is for find-by-tag.
-- **`--min-complexity` default.** Proposal 002 left "threshold tuning" open. Default 0 keeps current behavior; surfacing the flag lets the workflow dial up if HotCritical/ColdComplex fires too often. Pick a default after dogfooding.
-- **`--limit` default.** Proposal 002 raised "comment volume cap." Reasonable default: unlimited — don't paper over a noisy classifier. Workflow can pass `--limit 5` if needed.
+- **Tag placement.** Decided: `tag` is exposed at the top level of each batch entry *and* embedded at the end of `body` (matching the current shell, which appends the tag after the template). Top-level is for the shell loop; the trailing embed is what existing find-by-tag (`contains(tag)`) looks for, so no posting-side change is required.
 
 ---
 
@@ -134,14 +134,17 @@ Pulling these into `hc` would mean adopting an HTTP client, an auth surface, and
 - The posting loop (stays in shell, see above).
 - Line-level (`subject_type=line`) targeting — proposal 002 §"Future Work."
 - New quadrants or template types — mechanical once `hc md comment` exists.
+- A `--limit` flag for comment-volume capping. Default unlimited; if the classifier turns out noisy, add the flag at that point rather than pre-engineering for it.
+- A `--min-complexity` floor. Same logic as `--limit`: the median-split classifier already filters out low-complexity files into the `*-simple` quadrants, so a separate floor is redundant until proven otherwise. Add it if dogfooding shows the quadrant filter isn't enough.
+- `--no-decay` upstream support. The renderer assumes the default analyze JSON shape (decay on, `weighted_commits` present); users running `hc analyze --no-decay` and piping into `hc md comment` aren't a v1 target.
 
 ---
 
 ## Rollout
 
-1. Land proposal 006 first (`hc md` namespace + template directory).
+1. Proposal 006 is landed — `hc md` namespace and `internal/md/templates/` exist. Start here.
 2. Implement `hc md comment` consuming analyze JSON; emit NDJSON.
 3. Move templates from `scripts/templates/` into `internal/md/templates/comment/`. Delete the old dir.
 4. Rewrite `scripts/post-pr-file-comments.sh` to consume NDJSON from `hc md comment`. Drop the jq filter and awk renderer.
 5. Update the `pr-file-comments` Make target and the GitHub Actions workflow to invoke `hc md comment` directly.
-6. Dogfood on this repo. Decide `--min-complexity` and `--limit` defaults from observed comment volume.
+6. Dogfood on this repo. If comment volume is too noisy, revisit `--limit` and `--min-complexity` (both currently out of scope).
