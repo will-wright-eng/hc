@@ -11,7 +11,6 @@ var ignoreTemplate string
 
 // IgnoreOpts configures RenderIgnore output.
 type IgnoreOpts struct {
-	MaxFiles  int
 	NoSummary bool
 }
 
@@ -32,11 +31,7 @@ func RenderIgnore(root string, w io.Writer, opts IgnoreOpts) error {
 		return err
 	}
 
-	maxFiles := opts.MaxFiles
-	if maxFiles <= 0 {
-		maxFiles = DefaultMaxFiles
-	}
-	if err := writeSummary(root, w, maxFiles); err != nil {
+	if err := writeSummary(root, w); err != nil {
 		return err
 	}
 

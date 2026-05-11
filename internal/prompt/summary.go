@@ -10,17 +10,12 @@ import (
 	"strings"
 )
 
-// DefaultMaxFiles is the default cap on files collected for the largest-files
-// list. Directory counts and extension histograms always reflect the full repo.
-const DefaultMaxFiles = 200
-
 // writeSummary writes a compact repo summary to w as a fenced text block.
-func writeSummary(root string, w io.Writer, maxFiles int) error {
+func writeSummary(root string, w io.Writer) error {
 	var (
-		dirCounts  = make(map[string]int) // relative dir → file count
-		extCounts  = make(map[string]int) // extension → file count
-		totalFiles int
-		files      []fileEntry
+		dirCounts = make(map[string]int) // relative dir → file count
+		extCounts = make(map[string]int) // extension → file count
+		files     []fileEntry
 	)
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -40,9 +35,7 @@ func writeSummary(root string, w io.Writer, maxFiles int) error {
 			return nil
 		}
 
-		totalFiles++
-
-		// Directory counts (top 2 levels) — always updated, regardless of maxFiles cap.
+		// Directory counts (top 2 levels).
 		dir := filepath.ToSlash(filepath.Dir(rel))
 		parts := strings.Split(dir, "/")
 		if len(parts) > 2 {
@@ -50,17 +43,12 @@ func writeSummary(root string, w io.Writer, maxFiles int) error {
 		}
 		dirCounts[dir]++
 
-		// Extension histogram — always updated.
+		// Extension histogram.
 		ext := filepath.Ext(d.Name())
 		if ext == "" {
 			ext = "(no ext)"
 		}
 		extCounts[ext]++
-
-		// Collect file info for largest-files list, up to the cap.
-		if totalFiles > maxFiles {
-			return nil
-		}
 
 		info, err := d.Info()
 		if err != nil {

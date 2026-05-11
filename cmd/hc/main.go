@@ -136,11 +136,6 @@ func buildCommand() *cli.Command {
 						Usage:     "Emit a prompt that asks an LLM to generate a .hcignore file",
 						ArgsUsage: "[path]",
 						Flags: []cli.Flag{
-							&cli.IntFlag{
-								Name:  "max-files",
-								Usage: "Cap file listing in repo summary",
-								Value: 200,
-							},
 							&cli.BoolFlag{
 								Name:  "no-summary",
 								Usage: "Omit the repo summary from the prompt",
@@ -298,7 +293,6 @@ func runPromptIgnore(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	opts := prompt.IgnoreOpts{
-		MaxFiles:  cmd.Int("max-files"),
 		NoSummary: cmd.Bool("no-summary"),
 	}
 
