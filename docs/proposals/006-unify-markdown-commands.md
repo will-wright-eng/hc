@@ -97,7 +97,7 @@ internal/md/
 
 ## Hard Cutover
 
-No deprecation, no aliases. Running `hc report` or `hc prompt ignore` exits non-zero with an error pointing to the new command. Called out in the changelog of the release that ships this.
+No deprecation, no aliases, no stubs. `hc report` and `hc prompt` are removed entirely — the CLI will reject them with urfave/cli's default "command not found" error. Called out in the changelog of the release that ships this.
 
 ---
 

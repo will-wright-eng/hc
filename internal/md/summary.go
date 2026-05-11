@@ -1,4 +1,4 @@
-package prompt
+package md
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ func writeSummary(root string, w io.Writer) error {
 	var (
 		dirCounts = make(map[string]int) // relative dir → file count
 		extCounts = make(map[string]int) // extension → file count
-		files     []fileEntry
+		files     []summaryFile
 	)
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -54,7 +54,7 @@ func writeSummary(root string, w io.Writer) error {
 		if err != nil {
 			return nil
 		}
-		files = append(files, fileEntry{path: rel, size: info.Size()})
+		files = append(files, summaryFile{path: rel, size: info.Size()})
 
 		return nil
 	})
@@ -86,7 +86,7 @@ func writeSummary(root string, w io.Writer) error {
 	return err
 }
 
-type fileEntry struct {
+type summaryFile struct {
 	path string
 	size int64
 }
@@ -145,7 +145,7 @@ func writeExtensions(w io.Writer, extCounts map[string]int) error {
 	return err
 }
 
-func writeLargestFiles(w io.Writer, files []fileEntry) error {
+func writeLargestFiles(w io.Writer, files []summaryFile) error {
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].size > files[j].size
 	})

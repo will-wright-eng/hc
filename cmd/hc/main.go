@@ -12,9 +12,8 @@ import (
 	"github.com/urfave/cli/v3"
 	"github.com/will-wright-eng/hc/internal/app"
 	gitpkg "github.com/will-wright-eng/hc/internal/git"
+	"github.com/will-wright-eng/hc/internal/md"
 	"github.com/will-wright-eng/hc/internal/output"
-	"github.com/will-wright-eng/hc/internal/prompt"
-	"github.com/will-wright-eng/hc/internal/report"
 )
 
 // Populated at build time via -ldflags. Defaults make local `go run` honest.
@@ -103,38 +102,38 @@ func buildCommand() *cli.Command {
 				Action:    runAnalyze,
 			},
 			{
-				Name:  "report",
-				Usage: "Render analysis JSON as markdown for embedding in agent docs",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "input",
-						Aliases: []string{"i"},
-						Usage:   "Path to JSON file (default: stdin)",
-					},
-					&cli.StringFlag{
-						Name:    "output",
-						Aliases: []string{"o"},
-						Usage:   "Write report to FILE (overwrites; default: stdout)",
-					},
-					&cli.StringFlag{
-						Name:  "upsert",
-						Usage: "Inject report into existing markdown file (preserves surrounding content)",
-					},
-					&cli.BoolFlag{
-						Name:  "collapsible",
-						Usage: "Wrap hotspot categories in a <details> block so they collapse in HTML-rendering markdown viewers",
-					},
-				},
-				Action: runReport,
-			},
-			{
-				Name:  "prompt",
-				Usage: "Generate LLM prompts for hc workflows",
+				Name:  "md",
+				Usage: "Render markdown outputs from hc analysis",
 				Commands: []*cli.Command{
+					{
+						Name:  "report",
+						Usage: "Render analysis JSON as markdown for embedding in agent docs",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:    "input",
+								Aliases: []string{"i"},
+								Usage:   "Path to JSON file (default: stdin)",
+							},
+							&cli.StringFlag{
+								Name:    "output",
+								Aliases: []string{"o"},
+								Usage:   "Write report to FILE (overwrites; default: stdout)",
+							},
+							&cli.StringFlag{
+								Name:  "upsert",
+								Usage: "Inject report into existing markdown file (preserves surrounding content)",
+							},
+							&cli.BoolFlag{
+								Name:  "collapsible",
+								Usage: "Wrap hotspot categories in a <details> block so they collapse in HTML-rendering markdown viewers",
+							},
+						},
+						Action: runReport,
+					},
 					{
 						Name:   "ignore",
 						Usage:  "Emit a prompt that asks an LLM to generate a .hcignore file",
-						Action: runPromptIgnore,
+						Action: runMdIgnore,
 					},
 				},
 			},
@@ -255,13 +254,13 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	var buf bytes.Buffer
-	if err := report.Render(input, &buf, cmd.Bool("collapsible")); err != nil {
+	if err := md.Render(input, &buf, cmd.Bool("collapsible")); err != nil {
 		return fmt.Errorf("rendering report: %w", err)
 	}
 
 	switch {
 	case upsertPath != "":
-		if err := report.UpsertFile(upsertPath, buf.String()); err != nil {
+		if err := md.UpsertFile(upsertPath, buf.String()); err != nil {
 			return fmt.Errorf("writing output: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "report upserted into %s\n", upsertPath)
@@ -278,7 +277,7 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 	}
 }
 
-func runPromptIgnore(ctx context.Context, cmd *cli.Command) error {
+func runMdIgnore(ctx context.Context, cmd *cli.Command) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("resolving working directory: %w", err)
@@ -289,5 +288,5 @@ func runPromptIgnore(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return prompt.RenderIgnore(repoRoot, os.Stdout)
+	return md.RenderIgnore(repoRoot, os.Stdout)
 }

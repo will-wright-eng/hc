@@ -1,4 +1,4 @@
-package prompt
+package md
 
 import (
 	_ "embed"

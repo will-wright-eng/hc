@@ -24,9 +24,9 @@ go test -v -run TestAnalyze_QuadrantClassification ./internal/analysis/
 ./hc --since "6 months" --json
 ./hc --no-decay                                         # raw commit counts, no recency weighting
 ./hc --no-min-age                                       # disable the 14-day age floor
-./hc analyze --json | ./hc report                       # JSON pipeline → markdown report (e.g. HOTSPOTS.md)
-./hc analyze --json | ./hc report --upsert AGENTS.md    # inject into existing markdown (e.g. AGENTS.md)
-./hc prompt ignore | claude -p > .hcignore              # generate a .hcignore via LLM
+./hc analyze --json | ./hc md report                    # JSON pipeline → markdown report (e.g. HOTSPOTS.md)
+./hc analyze --json | ./hc md report --upsert AGENTS.md # inject into existing markdown (e.g. AGENTS.md)
+./hc md ignore | claude -p > .hcignore                  # generate a .hcignore via LLM
 ```
 
 Pre-commit hooks are configured (.pre-commit-config.yaml): go-fmt, go-vet, go-build, go-mod-tidy, golangci-lint, markdownlint.
@@ -36,7 +36,7 @@ Pre-commit hooks are configured (.pre-commit-config.yaml): go-fmt, go-vet, go-bu
 Pipeline: **git history → complexity scan → classification → output** (+ optional report rendering)
 
 ```text
-cmd/hc/main.go          CLI entry (urfave/cli v3). Subcommands: analyze, report, prompt.
+cmd/hc/main.go          CLI entry (urfave/cli v3). Subcommands: analyze, md (report, ignore).
                         Root command shares analyze's flags + Action via analyzeFlags()
                         helper, so bare `hc [flags] [path]` is sugar for `hc analyze ...`.
 internal/git/            Parses git log → []FileChurn {Path, Commits, WeightedCommits, Authors, FirstSeen}
@@ -46,9 +46,9 @@ internal/analysis/       Merges on path, median-split thresholds, classifies →
 internal/output/         Formats results as table/JSON/CSV (LINES + COMPLEXITY columns;
                          adds SCORE column when decay enabled)
 internal/ignore/         Gitignore-style pattern matching; loads .hcignore files
-internal/report/         Renders analysis JSON as markdown; report.UpsertFile injects into
-                         existing markdown via marker comments
-internal/prompt/         Renders LLM prompts (currently: .hcignore generation prompt)
+internal/md/             Markdown renderers: report.go (analysis JSON → markdown, with
+                         UpsertFile for marker-bounded injection); ignore.go + summary.go
+                         (LLM prompt for .hcignore generation, template in templates/)
 ```
 
 - **Threshold strategy**: median (p50) of commits and lines across all files — self-adaptive, no configuration needed.
@@ -58,7 +58,7 @@ internal/prompt/         Renders LLM prompts (currently: .hcignore generation pr
 - **Complexity metric**: indent-sum (always). Each non-blank, non-comment line contributes its indent depth; classification thresholds are the median of indent-sum across files. LOC is still computed and shown as a display column but does not drive classification.
 - **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json` and cannot be combined with `--output <non-json>` (returns an error).
 - **Exclude patterns** (`--exclude/-e`): repeatable flag, plus `.hcignore` file support.
-- **Report writes**: `hc report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
+- **Report writes**: `hc md report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.
 - **File age floor**: files whose first commit is younger than 14 days are excluded from analysis output (the median-split is unfair to files that haven't had time to accumulate churn). Auto-disables when `--since` is 30 days or less, with a one-line stderr note. Disable explicitly with `--no-min-age`. `FirstSeen` is bounded by the `--since` window — see `docs/proposals/file-age-floor.md` for the limitation and the planned Phase 2 fix.
 - Only dependency beyond stdlib is `github.com/urfave/cli/v3`.
