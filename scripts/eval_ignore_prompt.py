@@ -4,7 +4,7 @@
 # dependencies = []
 # ///
 """
-Evaluate `hc prompt ignore | claude -p` output coverage.
+Evaluate `hc md ignore | claude -p` output coverage.
 
 Runs the pipeline N times and checks whether each generated .hcignore
 excludes the categories we expect for this repo: tests, docs, and config.
@@ -96,9 +96,9 @@ def ensure_hc(root: Path) -> Path:
 
 
 def run_pipeline(hc: Path, out_path: Path) -> bool:
-    """Run `hc prompt ignore | claude -p` writing stdout to out_path."""
+    """Run `hc md ignore | claude -p` writing stdout to out_path."""
     with out_path.open("wb") as out:
-        prompt = subprocess.Popen([str(hc), "prompt", "ignore"], stdout=subprocess.PIPE)
+        prompt = subprocess.Popen([str(hc), "md", "ignore"], stdout=subprocess.PIPE)
         claude = subprocess.Popen(["claude", "-p"], stdin=prompt.stdout, stdout=out)
         assert prompt.stdout is not None
         prompt.stdout.close()  # let prompt receive SIGPIPE if claude exits

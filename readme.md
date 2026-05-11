@@ -30,10 +30,10 @@ hc -o csv
 hc -e "*.pb.go" -e "testdata/**"
 
 # Generate a markdown report from JSON output
-hc analyze --json | hc report -o report.md
+hc analyze --json | hc md report -o report.md
 
 # Or upsert into an existing markdown file (preserves surrounding content)
-hc analyze --json | hc report --upsert HOTSPOTS.md
+hc analyze --json | hc md report --upsert HOTSPOTS.md
 ```
 
 ### Flags
@@ -56,13 +56,14 @@ Files whose first commit is younger than 14 days are excluded from analysis outp
 
 The floor auto-disables when `--since` is 30 days or less (a one-line stderr note announces it), since a narrow window doesn't leave enough "old enough" history for the median-split to be meaningful. Use `--no-min-age` to disable explicitly.
 
-#### `report`
+#### `md report`
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--input` | `-i` | Path to JSON file (default: stdin) |
 | `--output` | `-o` | Write report to FILE, overwriting (default: stdout) |
 | `--upsert` |  | Inject report into existing markdown file (preserves surrounding content) |
+| `--collapsible` |  | Wrap hotspot categories in a `<details>` block |
 
 ### GitHub Actions
 
@@ -70,7 +71,7 @@ Run `hc` on every PR and post a sticky comment with the report. See [`.github/wo
 
 ```yaml
 - run: ./hc analyze --json > hotspots.json
-- run: ./hc report --collapsible --input hotspots.json --output report.md
+- run: ./hc md report --collapsible --input hotspots.json --output report.md
 ```
 
 This repo also includes [`.github/workflows/pr-file-comments.yml`](.github/workflows/pr-file-comments.yml), which analyzes the PR base branch and posts file-level review comments for changed files that were already `hot-critical` or `cold-complex`. The workflow calls `make pr-changed-files`, `make pr-hotspots-json`, and `make pr-file-comments`; the projection filter uses `hc analyze --files-from changed.txt`, the comment text lives in [`scripts/templates/`](scripts/templates/), and the posting logic lives in [`scripts/post-pr-file-comments.sh`](scripts/post-pr-file-comments.sh).
@@ -79,8 +80,8 @@ Requires `pull-requests: write` permission so the workflow can comment.
 
 ### Generating a `.hcignore`
 
-`hc prompt ignore` emits an LLM prompt that includes your repo's structure. Pipe it into any LLM CLI to generate a `.hcignore`:
+`hc md ignore` emits an LLM prompt that includes your repo's structure. Pipe it into any LLM CLI to generate a `.hcignore`:
 
 ```sh
-hc prompt ignore | claude -p > .hcignore
+hc md ignore | claude -p > .hcignore
 ```

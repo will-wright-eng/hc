@@ -30,7 +30,7 @@ lint: ## run linting
 	go vet $(REPO_ROOT)/...
 
 e2e: ## run e2e tests with decay, indentation, and report
-	./hc analyze --json | ./hc report
+	./hc analyze --json | ./hc md report
 
 pr-changed-files: ## write changed.txt for BASE_SHA...HEAD_SHA
 	@test -n "$${BASE_SHA:-}" || (echo "BASE_SHA is required" >&2; exit 1)
@@ -46,5 +46,5 @@ pr-hotspots-json-no-min-age: ## like pr-hotspots-json but disables the 14-day fi
 pr-file-comments: ## post/update PR file hotspot comments from hotspots.json
 	$(REPO_ROOT)/scripts/post-pr-file-comments.sh "$(HOTSPOTS_JSON)"
 
-eval-ignore: ## eval `hc prompt ignore | claude -p` coverage (TRIALS=N, OUTDIR=path)
+eval-ignore: ## eval `hc md ignore | claude -p` coverage (TRIALS=N, OUTDIR=path)
 	uv run --script $(REPO_ROOT)/scripts/eval_ignore_prompt.py -n 5 -o /tmp/eval-ignore/

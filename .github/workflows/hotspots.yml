@@ -53,7 +53,7 @@ jobs:
         run: ./hc analyze --json > hotspots.json
 
       - name: Render report
-        run: ./hc report --collapsible --input hotspots.json --output report.md
+        run: ./hc md report --collapsible --input hotspots.json --output report.md
 
       - name: Post report to PR
         env:
