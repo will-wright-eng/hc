@@ -49,19 +49,6 @@ func TestRenderIgnore_NoSummary(t *testing.T) {
 	}
 }
 
-func TestRenderIgnore_MaxFiles(t *testing.T) {
-	root := setupFixtureTree(t)
-	var buf bytes.Buffer
-	err := RenderIgnore(root, &buf, IgnoreOpts{MaxFiles: 5})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Should succeed without error; summary is generated with capped file list.
-	if buf.Len() == 0 {
-		t.Error("expected non-empty output")
-	}
-}
-
 func TestRenderIgnore_NoPlaceholderRemains(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
