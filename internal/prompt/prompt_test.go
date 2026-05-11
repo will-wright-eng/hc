@@ -9,7 +9,7 @@ import (
 func TestRenderIgnore_ContainsSyntaxRules(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	err := RenderIgnore(root, &buf, IgnoreOpts{})
+	err := RenderIgnore(root, &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,30 +29,10 @@ func TestRenderIgnore_ContainsSyntaxRules(t *testing.T) {
 	}
 }
 
-func TestRenderIgnore_NoSummary(t *testing.T) {
-	root := setupFixtureTree(t)
-	var buf bytes.Buffer
-	err := RenderIgnore(root, &buf, IgnoreOpts{NoSummary: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	output := buf.String()
-
-	if strings.Contains(output, "{{REPO_SUMMARY}}") {
-		t.Error("--no-summary output should not contain {{REPO_SUMMARY}} placeholder")
-	}
-	if strings.Contains(output, "```text") {
-		t.Error("--no-summary output should not contain repo summary block")
-	}
-	if !strings.Contains(output, ".hcignore") {
-		t.Error("--no-summary output should still contain prompt instructions")
-	}
-}
-
 func TestRenderIgnore_NoPlaceholderRemains(t *testing.T) {
 	root := setupFixtureTree(t)
 	var buf bytes.Buffer
-	err := RenderIgnore(root, &buf, IgnoreOpts{})
+	err := RenderIgnore(root, &buf)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/urfave/cli/v3"
 	"github.com/will-wright-eng/hc/internal/app"
+	gitpkg "github.com/will-wright-eng/hc/internal/git"
 	"github.com/will-wright-eng/hc/internal/output"
 	"github.com/will-wright-eng/hc/internal/prompt"
 	"github.com/will-wright-eng/hc/internal/report"
@@ -132,15 +132,8 @@ func buildCommand() *cli.Command {
 				Usage: "Generate LLM prompts for hc workflows",
 				Commands: []*cli.Command{
 					{
-						Name:      "ignore",
-						Usage:     "Emit a prompt that asks an LLM to generate a .hcignore file",
-						ArgsUsage: "[path]",
-						Flags: []cli.Flag{
-							&cli.BoolFlag{
-								Name:  "no-summary",
-								Usage: "Omit the repo summary from the prompt",
-							},
-						},
+						Name:   "ignore",
+						Usage:  "Emit a prompt that asks an LLM to generate a .hcignore file",
 						Action: runPromptIgnore,
 					},
 				},
@@ -286,15 +279,15 @@ func runReport(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runPromptIgnore(ctx context.Context, cmd *cli.Command) error {
-	path := resolvePathArg(cmd)
-	absPath, err := filepath.Abs(path)
+	cwd, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("resolving path: %w", err)
+		return fmt.Errorf("resolving working directory: %w", err)
 	}
 
-	opts := prompt.IgnoreOpts{
-		NoSummary: cmd.Bool("no-summary"),
+	repoRoot, err := gitpkg.RepoRoot(cwd)
+	if err != nil {
+		return err
 	}
 
-	return prompt.RenderIgnore(absPath, os.Stdout, opts)
+	return prompt.RenderIgnore(repoRoot, os.Stdout)
 }

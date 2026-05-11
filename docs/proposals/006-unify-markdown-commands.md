@@ -5,9 +5,9 @@
 `hc` has two top-level commands that both produce markdown from analysis-derived data, but they sit under different verbs and follow different shapes:
 
 - `hc report` — consumes `hc analyze --json` and renders the hotspot markdown report. Supports `--output FILE`, `--upsert FILE`, `--collapsible`.
-- `hc prompt ignore [path]` — walks a repo, builds a summary, and emits a markdown prompt asking an LLM to generate a `.hcignore`.
+- `hc prompt ignore` — walks the repo (resolved via `git.RepoRoot` from cwd), builds a summary, and emits a markdown prompt asking an LLM to generate a `.hcignore`.
 
-Both produce markdown. Both are rendering steps in a wider analyze → render pipeline. But they live under different verbs (`report` vs `prompt`), use different input contracts (JSON vs path), and split their templates across an inline literal in `internal/report/` and a file in `internal/prompt/templates/`.
+Both produce markdown. Both are rendering steps in a wider analyze → render pipeline. But they live under different verbs (`report` vs `prompt`), use different input contracts (JSON vs none), and split their templates across an inline literal in `internal/report/` and a file in `internal/prompt/templates/`.
 
 A third markdown output is coming — per-file PR hotspot comments (see proposal 007). Without unification, we'd add a third top-level verb for "renders markdown from analysis output," which is exactly the noise `docs/design/003-cli-ergonomics.md` is trying to remove.
 
@@ -47,24 +47,18 @@ Each renderer is a single leaf verb under `md`. Same pattern as `gh pr create`, 
 
 ### Input contract
 
-**All `md` subcommands consume analyze JSON via `-i FILE` or stdin.** This is the most significant break from the current shape: `hc prompt ignore [path]` walks the repo itself today; under this proposal, `hc md ignore` takes the same JSON `hc md report` does.
+Input shape is per-subcommand — the two renderers have different jobs and shouldn't be forced to share one.
+
+- **`hc md report`** consumes analyze JSON via `-i FILE` or stdin. Pure renderer: given JSON X, expected markdown Y.
+- **`hc md ignore`** takes no input file and no path arg. Its output is consumed by a coding agent to build a `.hcignore`, so it has no reason to align with the analyze JSON shape. It resolves the repo root from cwd via `git.RepoRoot` (the same helper analyze uses) and builds its summary directly — this is already how `prompt ignore` behaves today.
 
 Pipeline:
 
 ```bash
 hc analyze --json | hc md report
-hc analyze --json | hc md ignore
 hc analyze --json > a.json && hc md report -i a.json
+hc md ignore | claude -p > .hcignore
 ```
-
-**Why:** `md` commands become pure renderers. No file-tree walking, no git access, no analysis logic. Testing collapses to "given JSON X, expected markdown Y." `analyze` owns I/O against the repo; `md` owns I/O against templates.
-
-**Implication for `md ignore`:** the current `prompt ignore` builds a repo summary (file listing, top-churn entries) that is not all present in `hc analyze --json` today. Resolving this is a precondition for `md ignore`. Two paths:
-
-1. Extend `hc analyze --json` to include whatever fields `md ignore` needs. Single source of truth.
-2. Add an `--include-summary` (or similar) opt-in flag to `hc analyze` so the extra fields don't bloat the default JSON.
-
-Option 1 is recommended unless the summary fields are large or expensive. Decide by auditing `internal/prompt/summary.go` against the current analyze JSON and listing the gap.
 
 ### Flags
 
@@ -78,12 +72,10 @@ hc md report:
       --collapsible        Wrap quadrants in <details> blocks
 
 hc md ignore:
-  -i, --input FILE         JSON input (default: stdin)
-      --max-files N        Cap file listing in the prompt summary
-      --no-summary         Omit the summary block from the prompt
+  (no flags)
 ```
 
-`-i, --input` is the only shared shape (it's the input contract). `--output`/`--upsert`/`--collapsible` are report-specific because their semantics don't transfer cleanly to a prompt — you don't upsert a prompt into a doc.
+The two renderers share no flags. `md ignore` takes no input — it walks the repo itself, identically to today's `prompt ignore`.
 
 ---
 
@@ -91,12 +83,11 @@ hc md ignore:
 
 ```
 internal/md/
-  report.go              # was internal/report/report.go
+  report.go              # was internal/report/report.go (rendering stays inline, not extracted)
   upsert.go              # was internal/report/upsert.go
   ignore.go              # was internal/prompt/prompt.go
   summary.go             # was internal/prompt/summary.go
   templates/
-    report.md            # extracted from current inline report rendering, if applicable
     ignore.md            # was internal/prompt/templates/ignore.md
 ```
 
@@ -113,15 +104,14 @@ No deprecation, no aliases. Running `hc report` or `hc prompt ignore` exits non-
 ## Out of Scope
 
 - The PR file-comment renderer (`hc md comment`) — see proposal 007.
-- Any change to the analyze JSON shape *beyond* what's required to make `md ignore` a pure renderer.
+- Any change to the analyze JSON shape. `md ignore` is intentionally not a renderer of analyze JSON; it remains a repo-walking command, just under a new verb.
 - Multi-format rendering (HTML, plaintext, etc.). `md` is markdown-only by design.
 
 ---
 
 ## Rollout
 
-1. Decide and merge the analyze-JSON-vs-summary question (option 1 or 2 above). Without it `md ignore` cannot be a pure renderer.
-2. Move `internal/report/` → `internal/md/` with no behavior changes; update imports in `cmd/hc/main.go`. Tests should pass unchanged.
-3. Move `internal/prompt/` → `internal/md/`; consolidate templates into `internal/md/templates/`.
-4. Wire the new `hc md report` and `hc md ignore` subcommands. Delete `hc report` and `hc prompt`.
-5. Update README, CLAUDE.md, and `make e2e` examples.
+1. Move `internal/report/` → `internal/md/` with no behavior changes; update imports in `cmd/hc/main.go`. Tests should pass unchanged.
+2. Move `internal/prompt/` → `internal/md/`; consolidate templates into `internal/md/templates/`. Behavior is unchanged — `prompt ignore` already takes no flags and no path arg and resolves the repo root from cwd via `git.RepoRoot`.
+3. Wire the new `hc md report` and `hc md ignore` subcommands. Delete `hc report` and `hc prompt`.
+4. Update README, CLAUDE.md, and `make e2e` examples.
