@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/will-wright-eng/hc/compare/v1.1.0...v1.2.0) (2026-05-11)
+
+
+### Features
+
+* adding per-file comment render cmd ([#39](https://github.com/will-wright-eng/hc/issues/39)) ([2c40fd1](https://github.com/will-wright-eng/hc/commit/2c40fd1256f5b5ced2f0997061439a071c5bc17f))
+
 ## [1.1.0](https://github.com/will-wright-eng/hc/compare/v1.0.0...v1.1.0) (2026-05-11)
 
 
