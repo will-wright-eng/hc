@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/will-wright-eng/hc/internal/analysis"
+	"github.com/will-wright-eng/hc/internal/schema"
 )
 
 // ValidateFormat returns an error if format is not a recognized output format.
@@ -24,15 +25,46 @@ func ValidateFormat(format string) error {
 // FormatFiles writes file scores in the given format. Unknown formats fall
 // back to table; callers that want strict rejection should call ValidateFormat
 // first.
-func FormatFiles(w io.Writer, scores []analysis.FileScore, format string, decay bool) error {
+//
+// JSON output uses the schema.Envelope shape; callers must populate envelope
+// for that format. For table/csv, envelope may be the zero value.
+func FormatFiles(w io.Writer, scores []analysis.FileScore, format string, decay bool, envelope schema.Envelope) error {
 	switch format {
 	case "json":
-		return formatFilesJSON(w, scores, decay)
+		return FormatJSONEnvelope(w, envelope)
 	case "csv":
 		return formatFilesCSV(w, scores, decay)
 	default:
 		return formatFilesTable(w, scores, decay)
 	}
+}
+
+// FormatJSONEnvelope writes the envelope as indented JSON.
+func FormatJSONEnvelope(w io.Writer, env schema.Envelope) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(env)
+}
+
+// BuildFiles converts analysis scores into the schema.File slice, applying the
+// decay flag the same way the bare-array form used to (weighted_commits is
+// emitted only when decay is on).
+func BuildFiles(scores []analysis.FileScore, decay bool) []schema.File {
+	files := make([]schema.File, len(scores))
+	for i, s := range scores {
+		files[i] = schema.File{
+			Path:       s.Path,
+			Commits:    s.Commits,
+			Lines:      s.Lines,
+			Complexity: s.Complexity,
+			Authors:    s.Authors,
+			Quadrant:   s.Quadrant.JSONString(),
+		}
+		if decay {
+			files[i].WeightedCommits = s.WeightedCommits
+		}
+	}
+	return files
 }
 
 func formatFilesTable(w io.Writer, scores []analysis.FileScore, decay bool) error {
@@ -51,36 +83,6 @@ func formatFilesTable(w io.Writer, scores []analysis.FileScore, decay bool) erro
 		}
 	}
 	return tw.Flush()
-}
-
-type fileJSON struct {
-	Path            string  `json:"path"`
-	Commits         int     `json:"commits"`
-	WeightedCommits float64 `json:"weighted_commits,omitempty"`
-	Lines           int     `json:"lines"`
-	Complexity      int     `json:"complexity"`
-	Authors         int     `json:"authors"`
-	Quadrant        string  `json:"quadrant"`
-}
-
-func formatFilesJSON(w io.Writer, scores []analysis.FileScore, decay bool) error {
-	items := make([]fileJSON, len(scores))
-	for i, s := range scores {
-		items[i] = fileJSON{
-			Path:       s.Path,
-			Commits:    s.Commits,
-			Lines:      s.Lines,
-			Complexity: s.Complexity,
-			Authors:    s.Authors,
-			Quadrant:   s.Quadrant.JSONString(),
-		}
-		if decay {
-			items[i].WeightedCommits = s.WeightedCommits
-		}
-	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(items)
 }
 
 func formatFilesCSV(w io.Writer, scores []analysis.FileScore, decay bool) error {

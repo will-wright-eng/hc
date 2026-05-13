@@ -52,12 +52,17 @@ type AnalyzeOptions struct {
 // AnalyzeResult is everything the caller needs to render output and report on
 // the run. RepoRoot and Subtree are exposed for diagnostics; Decay is echoed
 // back so output formatters know whether to render the SCORE column.
+// ChurnThreshold and ComplexityThreshold are the median-split values used to
+// classify files — surfaced so the JSON envelope can record them.
 type AnalyzeResult struct {
-	Files              []analysis.FileScore
-	RepoRoot           string
-	Subtree            string // relative to RepoRoot, "" when analyzing root
-	Decay              bool
-	AutoDisabledMinAge bool
+	Files               []analysis.FileScore
+	RepoRoot            string
+	Subtree             string // relative to RepoRoot, "" when analyzing root
+	Decay               bool
+	AutoDisabledMinAge  bool
+	ChurnThreshold      float64
+	ComplexityThreshold int
+	MinAge              time.Duration
 }
 
 // Analyze runs the full analyze pipeline. Paths in the result are always
@@ -65,15 +70,15 @@ type AnalyzeResult struct {
 // subdirectory, results are filtered to that subtree but classification
 // thresholds are computed across the whole repo.
 //
-// ctx is currently unused — git extraction does not yet honor context — but
-// is part of the API so cancellation can be added without a signature change.
-func Analyze(_ context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
+// ctx cancels the underlying git invocations. Pass context.Background() if
+// you don't need cancellation.
+func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	absPath, err := filepath.Abs(opts.Path)
 	if err != nil {
 		return AnalyzeResult{}, fmt.Errorf("resolving path: %w", err)
 	}
 
-	repoRoot, err := gitpkg.RepoRoot(absPath)
+	repoRoot, err := gitpkg.RepoRoot(ctx, absPath)
 	if err != nil {
 		return AnalyzeResult{}, err
 	}
@@ -90,7 +95,7 @@ func Analyze(_ context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	patterns = append(patterns, opts.Excludes...)
 	ig := ignore.New(patterns)
 
-	churns, err := gitpkg.LogWithOptions(gitpkg.LogOptions{
+	churns, err := gitpkg.LogWithOptions(ctx, gitpkg.LogOptions{
 		RepoPath: repoRoot,
 		Since:    opts.Since,
 		Ignore:   ig,
@@ -107,10 +112,11 @@ func Analyze(_ context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	}
 
 	minAge, autoDisabled := EffectiveMinAge(opts.NoMinAge, opts.Since)
-	scores := analysis.AnalyzeWithOptions(churns, complexities, analysis.Options{
+	res := analysis.AnalyzeWithOptions(churns, complexities, analysis.Options{
 		MinAge: minAge,
 		Now:    opts.Now,
 	})
+	scores := res.Files
 
 	if subtree != "" {
 		scores = filterToSubtree(scores, subtree)
@@ -121,11 +127,14 @@ func Analyze(_ context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	}
 
 	return AnalyzeResult{
-		Files:              scores,
-		RepoRoot:           repoRoot,
-		Subtree:            subtree,
-		Decay:              opts.Decay,
-		AutoDisabledMinAge: autoDisabled,
+		Files:               scores,
+		RepoRoot:            repoRoot,
+		Subtree:             subtree,
+		Decay:               opts.Decay,
+		AutoDisabledMinAge:  autoDisabled,
+		ChurnThreshold:      res.ChurnThreshold,
+		ComplexityThreshold: res.ComplexityThreshold,
+		MinAge:              minAge,
 	}, nil
 }
 

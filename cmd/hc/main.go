@@ -9,11 +9,14 @@ import (
 	"os"
 	"strings"
 
+	"time"
+
 	"github.com/urfave/cli/v3"
 	"github.com/will-wright-eng/hc/internal/app"
 	gitpkg "github.com/will-wright-eng/hc/internal/git"
 	"github.com/will-wright-eng/hc/internal/md"
 	"github.com/will-wright-eng/hc/internal/output"
+	"github.com/will-wright-eng/hc/internal/schema"
 )
 
 // Populated at build time via -ldflags. Defaults make local `go run` honest.
@@ -247,7 +250,36 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		fmt.Fprintln(os.Stderr, autoDisableNoteText)
 	}
 
-	return output.FormatFiles(os.Stdout, result.Files, format, result.Decay)
+	envelope := buildEnvelope(result, opts)
+	return output.FormatFiles(os.Stdout, result.Files, format, result.Decay, envelope)
+}
+
+// buildEnvelope packages an analyze result into the schema.Envelope shape used
+// for `hc analyze --json`. The envelope is unconditionally constructed even
+// for table/csv output (cost is negligible) so the JSON path stays a one-line
+// dispatch in runAnalyze.
+func buildEnvelope(result app.AnalyzeResult, opts app.AnalyzeOptions) schema.Envelope {
+	minAge := ""
+	if result.MinAge > 0 {
+		minAge = result.MinAge.String()
+	}
+	return schema.Envelope{
+		SchemaVersion: schema.SchemaVersion,
+		GeneratedAt:   time.Now().UTC(),
+		RepoRoot:      result.RepoRoot,
+		AnalyzedPath:  result.Subtree,
+		Options: schema.Options{
+			Since:    opts.Since,
+			Decay:    result.Decay,
+			MinAge:   minAge,
+			Excludes: opts.Excludes,
+		},
+		Thresholds: schema.Thresholds{
+			Churn:      result.ChurnThreshold,
+			Complexity: result.ComplexityThreshold,
+		},
+		Files: output.BuildFiles(result.Files, result.Decay),
+	}
 }
 
 // openJSONInput returns the reader for `-i FILE`, falling back to stdin with
@@ -310,7 +342,7 @@ func runMdIgnore(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("resolving working directory: %w", err)
 	}
 
-	repoRoot, err := gitpkg.RepoRoot(cwd)
+	repoRoot, err := gitpkg.RepoRoot(ctx, cwd)
 	if err != nil {
 		return err
 	}

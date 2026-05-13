@@ -2,6 +2,7 @@ package git
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -11,8 +12,8 @@ import (
 // repository containing path. Returns an error if path is not inside a git
 // repository or git fails. The returned path is the canonical root that
 // matches the prefix of paths emitted by `git log --name-only`.
-func RepoRoot(path string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+func RepoRoot(ctx context.Context, path string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
 	cmd.Dir = path
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

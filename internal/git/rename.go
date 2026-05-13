@@ -3,6 +3,7 @@ package git
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"os/exec"
 	"strings"
 )
@@ -13,17 +14,19 @@ type RenameMap map[string]string
 // DetectRenames runs git log to find all rename events in the given time
 // window and returns a resolved mapping of old path -> current path.
 // Chains are collapsed: if a -> b -> c, the map contains a -> c and b -> c.
-func DetectRenames(repoPath string, since string) (RenameMap, error) {
+func DetectRenames(ctx context.Context, repoPath string, since string) (RenameMap, error) {
 	args := []string{"log", "--diff-filter=R", "--name-status", "--format=format:"}
 	if since != "" {
 		args = append(args, "--since="+since)
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, gitError("git log --diff-filter=R", err, &stderr)
 	}
 
 	raw := make(map[string]string)

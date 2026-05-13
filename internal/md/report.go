@@ -6,18 +6,9 @@ import (
 	"io"
 	"strings"
 	"time"
-)
 
-// fileEntry is the local struct for decoding analyze JSON output.
-type fileEntry struct {
-	Path            string  `json:"path"`
-	Commits         int     `json:"commits"`
-	WeightedCommits float64 `json:"weighted_commits,omitempty"`
-	Lines           int     `json:"lines"`
-	Complexity      int     `json:"complexity"`
-	Authors         int     `json:"authors"`
-	Quadrant        string  `json:"quadrant"`
-}
+	"github.com/will-wright-eng/hc/internal/schema"
+)
 
 type quadrantInfo struct {
 	Key         string
@@ -54,9 +45,9 @@ var quadrantOrder = []quadrantInfo{
 	},
 }
 
-// Render reads JSON from r (output of hc analyze --format json), groups entries
-// by quadrant, and writes structured markdown with sentinel markers to w.
-// When collapsible is true, the per-quadrant sections are wrapped in a
+// Render reads the envelope JSON from r (output of hc analyze --json), groups
+// entries by quadrant, and writes structured markdown with sentinel markers to
+// w. When collapsible is true, the per-quadrant sections are wrapped in a
 // <details> block so they collapse in HTML-rendering markdown viewers.
 func Render(r io.Reader, w io.Writer, collapsible bool) error {
 	data, err := io.ReadAll(r)
@@ -64,44 +55,26 @@ func Render(r io.Reader, w io.Writer, collapsible bool) error {
 		return fmt.Errorf("reading input: %w", err)
 	}
 
-	// Try file entries first, fall back to dir entries.
-	var fileEntries []fileEntry
-	if err := json.Unmarshal(data, &fileEntries); err != nil {
-		return fmt.Errorf("parsing JSON: %w", err)
+	if looksLikeBareArray(data) {
+		return fmt.Errorf("input is a bare JSON array, not an hc analyze envelope; regenerate with the current `hc analyze --json`")
 	}
 
-	if len(fileEntries) == 0 {
+	var env schema.Envelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		return fmt.Errorf("parsing JSON: %w", err)
+	}
+	if env.SchemaVersion == "" {
+		return fmt.Errorf("input is not an hc analyze envelope (missing schema_version); regenerate with the current `hc analyze --json`")
+	}
+	if len(env.Files) == 0 {
 		return fmt.Errorf("empty JSON input")
 	}
 
-	if isDirJSON(data) {
-		return fmt.Errorf("directory-level analyze JSON is no longer supported")
-	}
-
-	return renderFiles(w, fileEntries, collapsible)
+	return renderFiles(w, env.Files, env.Options.Decay, collapsible)
 }
 
-func isDirJSON(data []byte) bool {
-	// Check if the first object has dir-specific keys.
-	var raw []map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil || len(raw) == 0 {
-		return false
-	}
-	_, hasFiles := raw[0]["files"]
-	_, hasTotalCommits := raw[0]["total_commits"]
-	return hasFiles && hasTotalCommits
-}
-
-func renderFiles(w io.Writer, entries []fileEntry, collapsible bool) error {
-	hasDecay := false
-	for _, e := range entries {
-		if e.WeightedCommits > 0 {
-			hasDecay = true
-			break
-		}
-	}
-
-	grouped := make(map[string][]fileEntry)
+func renderFiles(w io.Writer, entries []schema.File, hasDecay, collapsible bool) error {
+	grouped := make(map[string][]schema.File)
 	for _, e := range entries {
 		grouped[e.Quadrant] = append(grouped[e.Quadrant], e)
 	}
@@ -156,12 +129,13 @@ func renderFiles(w io.Writer, entries []fileEntry, collapsible bool) error {
 		}
 
 		for _, e := range items {
+			path := escapeTableCell(e.Path)
 			if hasDecay {
 				sb.WriteString(fmt.Sprintf("| %s | %d | %.1f | %d | %d | %d |\n",
-					e.Path, e.Commits, e.WeightedCommits, e.Lines, e.Complexity, e.Authors))
+					path, e.Commits, e.WeightedCommits, e.Lines, e.Complexity, e.Authors))
 			} else {
 				sb.WriteString(fmt.Sprintf("| %s | %d | %d | %d | %d |\n",
-					e.Path, e.Commits, e.Lines, e.Complexity, e.Authors))
+					path, e.Commits, e.Lines, e.Complexity, e.Authors))
 			}
 		}
 	}

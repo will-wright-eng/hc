@@ -115,12 +115,12 @@ func TestAnalyzeWithOptions_UsesNowForMinAge(t *testing.T) {
 		{Path: "young-at-fixed-now.go", Lines: 100, Complexity: 100},
 	}
 
-	scores := AnalyzeWithOptions(churns, complexities, Options{
+	res := AnalyzeWithOptions(churns, complexities, Options{
 		MinAge: 14 * 24 * time.Hour,
 		Now:    now,
 	})
-	if len(scores) != 0 {
-		t.Fatalf("expected fixed Now to filter the young file, got %d scores", len(scores))
+	if len(res.Files) != 0 {
+		t.Fatalf("expected fixed Now to filter the young file, got %d scores", len(res.Files))
 	}
 }
 

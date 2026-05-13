@@ -7,12 +7,18 @@ import (
 	"testing"
 )
 
-const sampleAnalyzeJSON = `[
-  {"path":"a.go","commits":5,"weighted_commits":4.2,"lines":100,"complexity":120,"authors":2,"quadrant":"cold-complex"},
-  {"path":"b.go","commits":12,"weighted_commits":9.1,"lines":200,"complexity":250,"authors":3,"quadrant":"hot-critical"},
-  {"path":"c.go","commits":3,"weighted_commits":2.0,"lines":40,"complexity":50,"authors":1,"quadrant":"hot-simple"},
-  {"path":"d.go","commits":8,"weighted_commits":6.5,"lines":150,"complexity":180,"authors":2,"quadrant":"hot-critical"}
-]`
+const sampleAnalyzeJSON = `{
+  "schema_version": "1",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "options": {"decay": true},
+  "thresholds": {"churn": 5, "complexity": 130},
+  "files": [
+    {"path":"a.go","commits":5,"weighted_commits":4.2,"lines":100,"complexity":120,"authors":2,"quadrant":"cold-complex"},
+    {"path":"b.go","commits":12,"weighted_commits":9.1,"lines":200,"complexity":250,"authors":3,"quadrant":"hot-critical"},
+    {"path":"c.go","commits":3,"weighted_commits":2.0,"lines":40,"complexity":50,"authors":1,"quadrant":"hot-simple"},
+    {"path":"d.go","commits":8,"weighted_commits":6.5,"lines":150,"complexity":180,"authors":2,"quadrant":"hot-critical"}
+  ]
+}`
 
 func decodeEntries(t *testing.T, ndjson string) []CommentEntry {
 	t.Helper()
@@ -107,7 +113,7 @@ func TestRenderComments_BodyContainsTagAndTemplate(t *testing.T) {
 
 func TestRenderComments_StatsTableDynamic(t *testing.T) {
 	// Add an unknown field; the renderer should pick it up without code changes.
-	input := `[{"path":"x.go","commits":1,"new_metric":42,"complexity":1,"quadrant":"hot-critical"}]`
+	input := `{"schema_version":"1","generated_at":"2026-01-01T00:00:00Z","options":{"decay":true},"thresholds":{"churn":0,"complexity":0},"files":[{"path":"x.go","commits":1,"new_metric":42,"complexity":1,"quadrant":"hot-critical"}]}`
 	var buf bytes.Buffer
 	if err := RenderComments(strings.NewReader(input), &buf, CommentOpts{}); err != nil {
 		t.Fatal(err)
@@ -125,12 +131,25 @@ func TestRenderComments_StatsTableDynamic(t *testing.T) {
 }
 
 func TestRenderComments_EmptyInputEmitsNothing(t *testing.T) {
+	empty := `{"schema_version":"1","generated_at":"2026-01-01T00:00:00Z","options":{"decay":false},"thresholds":{"churn":0,"complexity":0},"files":[]}`
 	var buf bytes.Buffer
-	if err := RenderComments(strings.NewReader("[]"), &buf, CommentOpts{}); err != nil {
+	if err := RenderComments(strings.NewReader(empty), &buf, CommentOpts{}); err != nil {
 		t.Fatal(err)
 	}
 	if buf.Len() != 0 {
 		t.Errorf("expected zero output, got %q", buf.String())
+	}
+}
+
+func TestRenderComments_BareArrayRejected(t *testing.T) {
+	bare := `[{"path":"a.go","commits":1,"lines":1,"complexity":1,"authors":1,"quadrant":"hot-critical"}]`
+	var buf bytes.Buffer
+	err := RenderComments(strings.NewReader(bare), &buf, CommentOpts{})
+	if err == nil {
+		t.Fatal("expected bare-array input to be rejected")
+	}
+	if !strings.Contains(err.Error(), "envelope") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
