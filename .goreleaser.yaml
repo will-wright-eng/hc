@@ -11,11 +11,11 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: checksums.txt
@@ -23,3 +23,9 @@ checksum:
 # release-please owns the changelog and the GitHub Release body.
 changelog:
   disable: true
+
+# release-please creates the GitHub Release as a draft (drafts are mutable);
+# goreleaser uploads the binaries into that draft and publishes it.
+release:
+  use_existing_draft: true
+  draft: false
