@@ -3,7 +3,8 @@
   "packages": {
     ".": {
       "package-name": "hc",
-      "include-component-in-tag": false
+      "include-component-in-tag": false,
+      "draft": true
     }
   },
   "changelog-sections": [
