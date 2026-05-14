@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/will-wright-eng/hc/internal/schema"
 )
 
 //go:embed templates/comment/*.md
@@ -55,20 +57,30 @@ func RenderComments(r io.Reader, w io.Writer, opts CommentOpts) error {
 		return fmt.Errorf("reading input: %w", err)
 	}
 
-	var raws []json.RawMessage
-	if err := json.Unmarshal(data, &raws); err != nil {
+	if looksLikeBareArray(data) {
+		return fmt.Errorf("input is a bare JSON array, not an hc analyze envelope; regenerate with the current `hc analyze --json`")
+	}
+
+	var env struct {
+		SchemaVersion string            `json:"schema_version"`
+		Files         []json.RawMessage `json:"files"`
+	}
+	if err := json.Unmarshal(data, &env); err != nil {
 		return fmt.Errorf("parsing JSON: %w", err)
+	}
+	if env.SchemaVersion == "" {
+		return fmt.Errorf("input is not an hc analyze envelope (missing schema_version); regenerate with the current `hc analyze --json`")
 	}
 
 	quadrantSet := buildQuadrantSet(opts.Quadrants)
 
 	type kept struct {
-		head fileEntry
+		head schema.File
 		raw  json.RawMessage
 	}
 	var keep []kept
-	for _, raw := range raws {
-		var head fileEntry
+	for _, raw := range env.Files {
+		var head schema.File
 		if err := json.Unmarshal(raw, &head); err != nil {
 			return fmt.Errorf("parsing entry: %w", err)
 		}
@@ -175,7 +187,7 @@ func renderStatsTable(raw json.RawMessage) (string, error) {
 		if skip {
 			continue
 		}
-		fmt.Fprintf(&sb, "| %s | %s |\n", humanize(key), val)
+		fmt.Fprintf(&sb, "| %s | %s |\n", escapeTableCell(humanize(key)), escapeTableCell(val))
 	}
 	return sb.String(), nil
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/will-wright-eng/hc/internal/analysis"
+	"github.com/will-wright-eng/hc/internal/schema"
 )
 
 func sampleScores() []analysis.FileScore {
@@ -16,9 +17,18 @@ func sampleScores() []analysis.FileScore {
 	}
 }
 
+func sampleEnvelope(decay bool) schema.Envelope {
+	return schema.Envelope{
+		SchemaVersion: schema.SchemaVersion,
+		Options:       schema.Options{Decay: decay},
+		Thresholds:    schema.Thresholds{Churn: 50, Complexity: 500},
+		Files:         BuildFiles(sampleScores(), decay),
+	}
+}
+
 func TestFormatFilesTable(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "table", false)
+	err := FormatFiles(&buf, sampleScores(), "table", false, schema.Envelope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,26 +46,29 @@ func TestFormatFilesTable(t *testing.T) {
 
 func TestFormatFilesJSON(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "json", false)
+	err := FormatFiles(&buf, sampleScores(), "json", false, sampleEnvelope(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var items []map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &items); err != nil {
+	var env schema.Envelope
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if len(items) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(items))
+	if env.SchemaVersion != schema.SchemaVersion {
+		t.Errorf("expected schema_version %q, got %q", schema.SchemaVersion, env.SchemaVersion)
 	}
-	if items[0]["quadrant"] != "hot-critical" {
-		t.Errorf("expected hot-critical, got %v", items[0]["quadrant"])
+	if len(env.Files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(env.Files))
+	}
+	if env.Files[0].Quadrant != "hot-critical" {
+		t.Errorf("expected hot-critical, got %v", env.Files[0].Quadrant)
 	}
 }
 
 func TestFormatFilesCSV(t *testing.T) {
 	var buf bytes.Buffer
-	err := FormatFiles(&buf, sampleScores(), "csv", false)
+	err := FormatFiles(&buf, sampleScores(), "csv", false, schema.Envelope{})
 	if err != nil {
 		t.Fatal(err)
 	}

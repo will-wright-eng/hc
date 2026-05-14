@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-05-13T14:30:00Z",
+  "repo_root": "/tmp/repo",
+  "analyzed_path": "internal",
+  "options": {
+    "since": "6 months",
+    "decay": true,
+    "min_age": "336h0m0s",
+    "excludes": [
+      "vendor/**",
+      "*.gen.go"
+    ]
+  },
+  "thresholds": {
+    "churn": 12.5,
+    "complexity": 200
+  },
+  "files": [
+    {
+      "path": "internal/foo.go",
+      "commits": 42,
+      "weighted_commits": 31.4,
+      "lines": 500,
+      "complexity": 650,
+      "authors": 4,
+      "quadrant": "hot-critical"
+    },
+    {
+      "path": "internal/bar.go",
+      "commits": 3,
+      "lines": 80,
+      "complexity": 40,
+      "authors": 1,
+      "quadrant": "cold-simple"
+    }
+  ]
+}

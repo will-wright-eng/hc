@@ -70,6 +70,14 @@ type Options struct {
 	Now time.Time
 }
 
+// Result bundles the scored files with the thresholds used to classify them.
+// Callers that don't need thresholds can use Analyze, which discards them.
+type Result struct {
+	Files               []FileScore
+	ChurnThreshold      float64
+	ComplexityThreshold int
+}
+
 // Analyze merges churn and complexity data, classifies files into quadrants,
 // and returns results sorted by priority.
 //
@@ -78,12 +86,13 @@ type Options struct {
 // so thresholds reflect the whole repository's distribution; young files are
 // dropped only after classification.
 func Analyze(churns []git.FileChurn, complexities []complexity.FileComplexity, minAge time.Duration) []FileScore {
-	return AnalyzeWithOptions(churns, complexities, Options{MinAge: minAge})
+	return AnalyzeWithOptions(churns, complexities, Options{MinAge: minAge}).Files
 }
 
 // AnalyzeWithOptions merges churn and complexity data, classifies files into
-// quadrants, and returns results sorted by priority.
-func AnalyzeWithOptions(churns []git.FileChurn, complexities []complexity.FileComplexity, opts Options) []FileScore {
+// quadrants, and returns results sorted by priority along with the thresholds
+// used.
+func AnalyzeWithOptions(churns []git.FileChurn, complexities []complexity.FileComplexity, opts Options) Result {
 	churnMap := make(map[string]git.FileChurn, len(churns))
 	for _, c := range churns {
 		churnMap[c.Path] = c
@@ -111,14 +120,14 @@ func AnalyzeWithOptions(churns []git.FileChurn, complexities []complexity.FileCo
 	}
 
 	if len(scores) == 0 {
-		return nil
+		return Result{}
 	}
 
 	churnThreshold := medianWeightedCommits(scores)
-	complexityThreshold := float64(medianComplexity(scores))
+	complexityThreshold := medianComplexity(scores)
 
 	for i := range scores {
-		scores[i].Quadrant = classify(scores[i].WeightedCommits, scores[i].Complexity, churnThreshold, complexityThreshold)
+		scores[i].Quadrant = classify(scores[i].WeightedCommits, scores[i].Complexity, churnThreshold, float64(complexityThreshold))
 	}
 
 	if opts.MinAge > 0 {
@@ -130,7 +139,11 @@ func AnalyzeWithOptions(churns []git.FileChurn, complexities []complexity.FileCo
 	}
 
 	sortScores(scores)
-	return scores
+	return Result{
+		Files:               scores,
+		ChurnThreshold:      churnThreshold,
+		ComplexityThreshold: complexityThreshold,
+	}
 }
 
 // filterByMinAge drops files whose first-seen commit is younger than minAge.

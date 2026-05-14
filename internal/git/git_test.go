@@ -1,6 +1,8 @@
 package git
 
 import (
+	"context"
+	"errors"
 	"math"
 	"os"
 	"os/exec"
@@ -14,7 +16,7 @@ func TestLogWithOptions_UsesNowForDecay(t *testing.T) {
 	commitFile(t, repo, "old.go", "package old\n", "2020-01-01T00:00:00Z")
 	commitFile(t, repo, "new.go", "package new\n", "2020-01-06T00:00:00Z")
 
-	churns, err := LogWithOptions(LogOptions{
+	churns, err := LogWithOptions(context.Background(), LogOptions{
 		RepoPath: repo,
 		Decay:    true,
 		Now:      time.Date(2020, 1, 11, 0, 0, 0, 0, time.UTC),
@@ -37,6 +39,48 @@ func TestLogWithOptions_UsesNowForDecay(t *testing.T) {
 	if math.Abs(newer.WeightedCommits-wantNewer) > 0.001 {
 		t.Fatalf("new.go weighted commits = %f, want about %f", newer.WeightedCommits, wantNewer)
 	}
+}
+
+func TestLogWithOptions_CancelledContext(t *testing.T) {
+	repo := initLogTestRepo(t)
+	commitFile(t, repo, "a.go", "package a\n", "2020-01-01T00:00:00Z")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before invocation — git should exit non-zero immediately
+
+	_, err := LogWithOptions(ctx, LogOptions{RepoPath: repo})
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled in error chain, got: %v", err)
+	}
+}
+
+func TestRepoRoot_CapturesStderr(t *testing.T) {
+	// Point at a directory that is definitely not a git repo.
+	dir := t.TempDir()
+	_, err := RepoRoot(context.Background(), dir)
+	if err == nil {
+		t.Fatal("expected error from non-repo directory")
+	}
+	// stderr should make it into the error message.
+	if msg := err.Error(); msg == "" || !containsAny(msg, "not a git repository", "fatal") {
+		t.Fatalf("expected stderr-bearing error, got: %v", err)
+	}
+}
+
+func containsAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if sub != "" && (len(s) >= len(sub)) {
+			for i := 0; i+len(sub) <= len(s); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func initLogTestRepo(t *testing.T) string {

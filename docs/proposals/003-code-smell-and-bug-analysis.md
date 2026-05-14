@@ -14,6 +14,11 @@ The main remaining growth risks are git extraction, CLI-level configurability
 around complexity scanning, and an implicit JSON contract shared between
 `output` and `report`.
 
+> **Note:** Markdown escaping, `context.Context` threading, and the shared
+> JSON DTO have been split out into
+> [008-pipeline-polish.md](008-pipeline-polish.md). What remains here is
+> complexity-policy configurability and report generation metadata.
+
 ---
 
 ## Growth Risks and Code Smells

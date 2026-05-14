@@ -3,9 +3,9 @@ package git
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,8 +47,8 @@ type LogOptions struct {
 // Log runs git log and returns per-file churn data.
 // repoPath is the root of the git repository.
 // since is an optional time window (e.g. "6 months") passed to --since.
-func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileChurn, error) {
-	return LogWithOptions(LogOptions{
+func Log(ctx context.Context, repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileChurn, error) {
+	return LogWithOptions(ctx, LogOptions{
 		RepoPath: repoPath,
 		Since:    since,
 		Ignore:   ig,
@@ -56,19 +56,20 @@ func Log(repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileC
 	})
 }
 
-// LogWithOptions runs git log and returns per-file churn data.
-func LogWithOptions(opts LogOptions) ([]FileChurn, error) {
-	commitFiles, err := gitLogFiles(opts.RepoPath, opts.Since)
+// LogWithOptions runs git log and returns per-file churn data. ctx cancels the
+// underlying git invocations.
+func LogWithOptions(ctx context.Context, opts LogOptions) ([]FileChurn, error) {
+	commitFiles, err := gitLogFiles(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
 		return nil, err
 	}
 
-	authorMap, err := gitLogAuthors(opts.RepoPath, opts.Since)
+	authorMap, err := gitLogAuthors(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
 		return nil, err
 	}
 
-	renames, err := DetectRenames(opts.RepoPath, opts.Since)
+	renames, err := DetectRenames(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
 		return nil, fmt.Errorf("detecting renames: %w", err)
 	}
@@ -155,17 +156,19 @@ func LogWithOptions(opts LogOptions) ([]FileChurn, error) {
 }
 
 // gitLogFiles returns commit info (date + files) for each commit.
-func gitLogFiles(repoPath string, since string) ([]commitInfo, error) {
+func gitLogFiles(ctx context.Context, repoPath string, since string) ([]commitInfo, error) {
 	args := []string{"log", "--format=format:__DATE__%cI", "--name-only"}
 	if since != "" {
 		args = append(args, "--since="+since)
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, gitError("git log --name-only", err, &stderr)
 	}
 
 	var commits []commitInfo
@@ -206,17 +209,19 @@ func gitLogFiles(repoPath string, since string) ([]commitInfo, error) {
 }
 
 // gitLogAuthors returns a map of file path -> list of author names.
-func gitLogAuthors(repoPath string, since string) (map[string][]string, error) {
+func gitLogAuthors(ctx context.Context, repoPath string, since string) (map[string][]string, error) {
 	args := []string{"log", "--format=format:__AUTHOR__%aN", "--name-only"}
 	if since != "" {
 		args = append(args, "--since="+since)
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, gitError("git log authors", err, &stderr)
 	}
 
 	result := make(map[string][]string)
@@ -253,13 +258,15 @@ func gitLogAuthors(repoPath string, since string) (map[string][]string, error) {
 }
 
 // CountAuthors is a helper for testing — counts unique authors from a shortlog.
-func CountAuthors(repoPath string, path string) (int, error) {
+func CountAuthors(ctx context.Context, repoPath string, path string) (int, error) {
 	args := []string{"shortlog", "-sn", "--", path}
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return 0, err
+		return 0, gitError("git shortlog", err, &stderr)
 	}
 	count := 0
 	scanner := bufio.NewScanner(bytes.NewReader(out))
@@ -269,6 +276,16 @@ func CountAuthors(repoPath string, path string) (int, error) {
 			count++
 		}
 	}
-	_ = strconv.Itoa(count) // just to keep strconv imported if needed
 	return count, scanner.Err()
+}
+
+// gitError wraps a git invocation failure with stderr context when available.
+// Context-cancellation errors are returned as-is so callers can match them
+// with errors.Is(err, context.Canceled).
+func gitError(op string, err error, stderr *bytes.Buffer) error {
+	msg := strings.TrimSpace(stderr.String())
+	if msg == "" {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	return fmt.Errorf("%s: %w: %s", op, err, msg)
 }
