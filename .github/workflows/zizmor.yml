@@ -1,8 +1,15 @@
 name: zizmor
 
 # Static analysis of this repo's own GitHub Actions workflows.
-# zizmor (https://docs.zizmor.sh) audits for CI/CD security issues —
-# template injection, credential persistence, overbroad permissions, etc.
+# zizmor (https://docs.zizmor.sh) audits CI/CD for security issues —
+# template injection, credential persistence, overbroad permissions,
+# unpinned actions, etc. Findings are rendered as inline annotations on
+# the pull request's "Files changed" tab.
+#
+# This check is intentionally NON-BLOCKING (continue-on-error): it
+# surfaces issues without gating merges so existing findings can be
+# triaged gradually. Remove `continue-on-error` to make findings fail
+# the check once the backlog is clean.
 
 on:
   pull_request:
@@ -18,22 +25,20 @@ jobs:
     name: zizmor audit
     runs-on: ubuntu-latest
     permissions:
-      security-events: write  # upload SARIF -> Code scanning alerts (free on public repos)
-      contents: read          # checkout
-      actions: read           # read workflow metadata for online audits
+      contents: read  # checkout + online audits
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 
       - name: Run zizmor
-        uses: zizmorcore/zizmor-action@v0.5.6
+        uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938d # v0.5.6
+        # zizmor exits non-zero when it finds issues; keep the job green
+        # while still emitting the PR annotations requested below.
+        continue-on-error: true
         with:
-          # Inline ::error/::warning annotations on the PR "Files changed" tab.
+          # Emit ::error/::warning annotations on the PR diff. Mutually
+          # exclusive with advanced-security, so that must be disabled.
           annotations: true
-          # Also upload SARIF so findings surface as Code scanning alerts and as
-          # persistent inline annotations in the PR diff. Default is true; kept
-          # explicit. Set to false to rely solely on the lightweight annotations
-          # above (then `security-events: write` is no longer needed).
-          advanced-security: true
+          advanced-security: false
