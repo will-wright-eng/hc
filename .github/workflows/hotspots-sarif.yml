@@ -35,9 +35,19 @@ jobs:
         run: make build
 
       - name: Render SARIF
-        run: ./hc analyze --json | ./hc sarif > results.sarif
+        # pipefail so a failing `hc analyze` aborts the step instead of piping
+        # an empty envelope into `hc sarif` — an empty SARIF would clear all
+        # previously reported code-scanning alerts on upload.
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./hc analyze --json | ./hc sarif > results.sarif
 
       - name: Upload to code scanning
+        # Fork PRs get a read-only token (no security-events: write), so the
+        # upload would 403. Skip it there; the render step above still runs and
+        # validates that hc works on the PR.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
         with:
           sarif_file: results.sarif

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"unicode"
 
@@ -111,7 +112,6 @@ func Render(r io.Reader, w io.Writer, opts Options) error {
 	want := quadrantSet(opts.Quadrants)
 
 	kept := make([]schema.File, 0, len(env.Files))
-	present := make(map[string]bool)
 	for _, f := range env.Files {
 		if !want[f.Quadrant] {
 			continue
@@ -120,14 +120,25 @@ func Render(r io.Reader, w io.Writer, opts Options) error {
 			continue // no rule (cold-simple or unknown) → never a finding
 		}
 		kept = append(kept, f)
-		present[f.Quadrant] = true
 	}
 
+	// Order: quadrant rank, then weighted commits desc (decay on), then raw
+	// commits desc (so --no-decay — which omits weighted_commits — still orders
+	// by activity), then path. The final path key makes output fully
+	// deterministic even when every prior key ties; upstream sortScores is not
+	// stable, so we cannot rely on the envelope's order for ties.
 	sort.SliceStable(kept, func(i, j int) bool {
-		if quadrantRank[kept[i].Quadrant] != quadrantRank[kept[j].Quadrant] {
-			return quadrantRank[kept[i].Quadrant] < quadrantRank[kept[j].Quadrant]
+		a, b := kept[i], kept[j]
+		if quadrantRank[a.Quadrant] != quadrantRank[b.Quadrant] {
+			return quadrantRank[a.Quadrant] < quadrantRank[b.Quadrant]
 		}
-		return kept[i].WeightedCommits > kept[j].WeightedCommits
+		if a.WeightedCommits != b.WeightedCommits {
+			return a.WeightedCommits > b.WeightedCommits
+		}
+		if a.Commits != b.Commits {
+			return a.Commits > b.Commits
+		}
+		return a.Path < b.Path
 	})
 
 	log := sarifLog{
@@ -138,7 +149,7 @@ func Render(r io.Reader, w io.Writer, opts Options) error {
 				Name:           toolName,
 				InformationURI: informationURI,
 				Version:        opts.Version,
-				Rules:          buildRules(present),
+				Rules:          buildRules(kept),
 			}},
 			AutomationDetails: automationDetails{ID: automationID},
 			Results:           buildResults(kept, env.Options.Decay),
@@ -155,11 +166,16 @@ func Render(r io.Reader, w io.Writer, opts Options) error {
 }
 
 // buildRules emits one reportingDescriptor per quadrant that produced a
-// finding, in canonical rank order.
-func buildRules(present map[string]bool) []reportingDescriptor {
-	keys := make([]string, 0, len(present))
-	for k := range present {
-		keys = append(keys, k)
+// finding, in canonical rank order. The set is derived from the kept files so
+// it cannot drift from the results.
+func buildRules(kept []schema.File) []reportingDescriptor {
+	seen := make(map[string]bool)
+	keys := make([]string, 0)
+	for _, f := range kept {
+		if !seen[f.Quadrant] {
+			seen[f.Quadrant] = true
+			keys = append(keys, f.Quadrant)
+		}
 	}
 	sort.Slice(keys, func(i, j int) bool { return quadrantRank[keys[i]] < quadrantRank[keys[j]] })
 
@@ -185,13 +201,17 @@ func buildResults(files []schema.File, decay bool) []result {
 	out := make([]result, 0, len(files))
 	for _, f := range files {
 		r := rules[f.Quadrant]
+		// SARIF requires forward-slash, repo-root-relative URIs. Normalize
+		// defensively rather than trusting the upstream path separator, so the
+		// uri resolves and the fingerprint is stable across platforms.
+		uri := filepath.ToSlash(f.Path)
 		out = append(out, result{
 			RuleID:  r.id,
 			Level:   r.level,
 			Message: textBlock{Text: message(f, r, decay)},
 			Locations: []location{{
 				PhysicalLocation: physicalLocation{
-					ArtifactLocation: artifactLocation{URI: f.Path},
+					ArtifactLocation: artifactLocation{URI: uri},
 					Region:           region{StartLine: 1},
 				},
 			}},
@@ -199,7 +219,7 @@ func buildResults(files []schema.File, decay bool) []result {
 			// commits even though the line-1 anchor is synthetic. Emitted
 			// explicitly because the REST upload API does not auto-populate it.
 			PartialFingerprints: map[string]string{
-				"primaryLocationLineHash": r.id + ":" + f.Path,
+				"primaryLocationLineHash": r.id + ":" + uri,
 			},
 		})
 	}
@@ -217,14 +237,18 @@ func message(f schema.File, r rule, decay bool) string {
 
 func quadrantSet(in []string) map[string]bool {
 	set := make(map[string]bool)
-	if len(in) == 0 {
+	for _, q := range in {
+		if q != "" {
+			set[q] = true
+		}
+	}
+	// No (or only empty) --quadrant values → the default actionable set.
+	// Falling back here avoids silently emitting an empty SARIF that would
+	// clear existing alerts on upload.
+	if len(set) == 0 {
 		for _, q := range defaultQuadrants {
 			set[q] = true
 		}
-		return set
-	}
-	for _, q := range in {
-		set[q] = true
 	}
 	return set
 }

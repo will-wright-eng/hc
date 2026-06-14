@@ -149,6 +149,57 @@ func TestRender_EmptyEmitsValidEmptyLog(t *testing.T) {
 	}
 }
 
+func TestRender_PathEscapingAndNormalization(t *testing.T) {
+	// A path with characters that must be JSON-escaped (quote, space, unicode)
+	// and OS-native separators that must become forward slashes. FromSlash
+	// makes the input use the platform separator so ToSlash is exercised
+	// portably (no-op on Unix, backslash→slash on Windows).
+	want := `dir/sub/oddly "named" café.go`
+	pathJSON, _ := json.Marshal(filepath.FromSlash(want))
+	in := `{"schema_version":"1","options":{"decay":true},"thresholds":{"churn":0,"complexity":0},
+	  "files":[{"path":` + string(pathJSON) + `,"commits":2,"weighted_commits":1.0,"lines":10,"complexity":200,"authors":1,"quadrant":"hot-critical"}]}`
+	log := render(t, in, Options{}) // render() fails the test if output isn't valid JSON
+	res := log.Runs[0].Results[0]
+	if got := res.Locations[0].PhysicalLocation.ArtifactLocation.URI; got != want {
+		t.Errorf("uri = %q, want %q", got, want)
+	}
+	if got := res.PartialFingerprints["primaryLocationLineHash"]; got != "hot-critical:"+want {
+		t.Errorf("fingerprint = %q, want hot-critical:%s", got, want)
+	}
+}
+
+func TestRender_DeterministicOnEqualWeights(t *testing.T) {
+	// Same quadrant, equal weighted_commits and commits: order must be stable
+	// (by path) regardless of input order, on its own — not by luck of the
+	// envelope. Feed the files in reverse-path order.
+	in := `{"schema_version":"1","options":{"decay":true},"thresholds":{"churn":0,"complexity":0},
+	  "files":[
+	    {"path":"z.go","commits":4,"weighted_commits":3.0,"lines":10,"complexity":200,"authors":1,"quadrant":"hot-critical"},
+	    {"path":"m.go","commits":4,"weighted_commits":3.0,"lines":10,"complexity":200,"authors":1,"quadrant":"hot-critical"},
+	    {"path":"a.go","commits":4,"weighted_commits":3.0,"lines":10,"complexity":200,"authors":1,"quadrant":"hot-critical"}
+	  ]}`
+	got := resultPaths(render(t, in, Options{}))
+	want := []string{"a.go", "m.go", "z.go"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("equal-weight order = %v, want path-sorted %v", got, want)
+	}
+}
+
+func TestRender_NoDecayOrdersByCommits(t *testing.T) {
+	// --no-decay omits weighted_commits (all 0 in the envelope); ordering must
+	// fall back to raw commits desc, then path — deterministic, activity-first.
+	in := `{"schema_version":"1","options":{"decay":false},"thresholds":{"churn":0,"complexity":0},
+	  "files":[
+	    {"path":"low.go","commits":2,"lines":10,"complexity":200,"authors":1,"quadrant":"hot-critical"},
+	    {"path":"high.go","commits":9,"lines":10,"complexity":200,"authors":1,"quadrant":"hot-critical"}
+	  ]}`
+	got := resultPaths(render(t, in, Options{}))
+	want := []string{"high.go", "low.go"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("no-decay order = %v, want commits-desc %v", got, want)
+	}
+}
+
 func TestRender_Deterministic(t *testing.T) {
 	var a, b bytes.Buffer
 	if err := Render(strings.NewReader(sampleJSON), &a, Options{Version: "1.2.3"}); err != nil {

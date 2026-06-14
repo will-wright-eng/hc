@@ -402,19 +402,24 @@ func runSarif(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer func() { _ = input.Close() }()
 
-	var out io.Writer = os.Stdout
-	if outputPath := cmd.String("output"); outputPath != "" {
-		f, err := os.Create(outputPath)
-		if err != nil {
-			return fmt.Errorf("opening output: %w", err)
-		}
-		defer func() { _ = f.Close() }()
-		out = f
-	}
-
 	opts := sarif.Options{
 		Quadrants: cmd.StringSlice("quadrant"),
 		Version:   version,
 	}
-	return sarif.Render(input, out, opts)
+
+	// Render into a buffer first so a parse/validation error never clobbers an
+	// existing --output file (mirrors runReport).
+	var buf bytes.Buffer
+	if err := sarif.Render(input, &buf, opts); err != nil {
+		return err
+	}
+
+	if outputPath := cmd.String("output"); outputPath != "" {
+		if err := os.WriteFile(outputPath, buf.Bytes(), 0o644); err != nil {
+			return fmt.Errorf("writing output: %w", err)
+		}
+		return nil
+	}
+	_, err = buf.WriteTo(os.Stdout)
+	return err
 }
