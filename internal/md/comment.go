@@ -1,25 +1,39 @@
 package md
 
 import (
-	"bytes"
-	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/will-wright-eng/hc/internal/schema"
 )
 
-//go:embed templates/comment/*.md
-var commentTemplates embed.FS
+// annotationRule maps a quadrant to its GitHub Actions annotation level and the
+// human wording used in the title and message. Quadrants without a rule
+// (cold-simple, and hot-simple by default) never produce an annotation.
+type annotationRule struct {
+	level string // notice | warning
+	title string
+	lead  string // message body, follows the file path
+}
 
-const commentTagFormat = "<!-- hc-pr-comment:%s -->"
+var annotationRules = map[string]annotationRule{
+	"hot-critical": {
+		level: "warning",
+		title: "Hot/Critical hotspot",
+		lead:  "was already a Hot/Critical hotspot on the base branch: high churn and high complexity. Keep the diff focused, lean on tests, and review changes here carefully.",
+	},
+	"cold-complex": {
+		level: "notice",
+		title: "Cold/Complex hotspot",
+		lead:  "was already a Cold/Complex hotspot on the base branch: stable but costly to touch. Prefer a small change and add or adjust tests before refactoring.",
+	},
+}
 
-// Canonical comment-emission order. Matches the quadrant priority used
-// elsewhere in hc (hot-critical first).
+// quadrantRank is the canonical emission order (hot-critical first), matching
+// the order used across hc.
 var quadrantRank = map[string]int{
 	"hot-critical": 0,
 	"hot-simple":   1,
@@ -27,44 +41,34 @@ var quadrantRank = map[string]int{
 	"cold-simple":  3,
 }
 
-// Quadrants without a template are silently dropped (today only hot-critical
-// and cold-complex have one).
-var quadrantTemplate = map[string]string{
-	"hot-critical": "hotcritical.md",
-	"cold-complex": "coldcomplex.md",
-}
-
-type CommentOpts struct {
-	// Quadrants restricts output to the listed quadrant keys. Empty means
-	// the default set (hot-critical, cold-complex).
+// AnnotateOpts configures RenderAnnotations.
+type AnnotateOpts struct {
+	// Quadrants restricts output to the listed quadrant keys. Empty (or only
+	// empty strings) means the default set — the quadrants that have an
+	// annotation rule: hot-critical and cold-complex. Keys without a rule yield
+	// no annotations.
 	Quadrants []string
+	// AnchorLines maps a repo-relative path to the line its annotation should
+	// target, so the annotation renders inline on the PR diff. Paths not in the
+	// map fall back to line 1. Nil is fine (everything falls back to line 1).
+	AnchorLines map[string]int
 }
 
-// CommentEntry is one rendered PR comment, ready for the shell loop to post.
-type CommentEntry struct {
-	Path     string `json:"path"`
-	Quadrant string `json:"quadrant"`
-	Tag      string `json:"tag"`
-	Body     string `json:"body"`
-}
-
-// RenderComments reads analyze JSON from r, filters and sorts entries, renders
-// each one through its quadrant template, and writes one NDJSON object per
-// comment to w.
-func RenderComments(r io.Reader, w io.Writer, opts CommentOpts) error {
+// RenderAnnotations reads analyze JSON from r (output of `hc analyze --json`),
+// filters and sorts the hotspot files, and writes one GitHub Actions
+// workflow-command annotation per file to w. GitHub's runner converts these to
+// check-run annotations on the pull request. Empty or filtered-to-empty input
+// produces no output.
+func RenderAnnotations(r io.Reader, w io.Writer, opts AnnotateOpts) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("reading input: %w", err)
 	}
-
 	if looksLikeBareArray(data) {
 		return fmt.Errorf("input is a bare JSON array, not an hc analyze envelope; regenerate with the current `hc analyze --json`")
 	}
 
-	var env struct {
-		SchemaVersion string            `json:"schema_version"`
-		Files         []json.RawMessage `json:"files"`
-	}
+	var env schema.Envelope
 	if err := json.Unmarshal(data, &env); err != nil {
 		return fmt.Errorf("parsing JSON: %w", err)
 	}
@@ -72,158 +76,84 @@ func RenderComments(r io.Reader, w io.Writer, opts CommentOpts) error {
 		return fmt.Errorf("input is not an hc analyze envelope (missing schema_version); regenerate with the current `hc analyze --json`")
 	}
 
-	quadrantSet := buildQuadrantSet(opts.Quadrants)
+	want := annotateQuadrantSet(opts.Quadrants)
 
-	type kept struct {
-		head schema.File
-		raw  json.RawMessage
-	}
-	var keep []kept
-	for _, raw := range env.Files {
-		var head schema.File
-		if err := json.Unmarshal(raw, &head); err != nil {
-			return fmt.Errorf("parsing entry: %w", err)
-		}
-		if _, ok := quadrantTemplate[head.Quadrant]; !ok {
+	kept := make([]schema.File, 0, len(env.Files))
+	for _, f := range env.Files {
+		if !want[f.Quadrant] {
 			continue
 		}
-		if _, ok := quadrantSet[head.Quadrant]; !ok {
-			continue
+		if _, ok := annotationRules[f.Quadrant]; !ok {
+			continue // cold-simple / hot-simple-by-default / unknown → no rule
 		}
-		keep = append(keep, kept{head: head, raw: raw})
+		kept = append(kept, f)
 	}
 
-	sort.SliceStable(keep, func(i, j int) bool {
-		if quadrantRank[keep[i].head.Quadrant] != quadrantRank[keep[j].head.Quadrant] {
-			return quadrantRank[keep[i].head.Quadrant] < quadrantRank[keep[j].head.Quadrant]
+	// Quadrant rank, then weighted commits desc (decay on), then raw commits
+	// desc (so --no-decay still orders by activity), then path for full
+	// determinism.
+	sort.SliceStable(kept, func(i, j int) bool {
+		a, b := kept[i], kept[j]
+		if quadrantRank[a.Quadrant] != quadrantRank[b.Quadrant] {
+			return quadrantRank[a.Quadrant] < quadrantRank[b.Quadrant]
 		}
-		return keep[i].head.WeightedCommits > keep[j].head.WeightedCommits
+		if a.WeightedCommits != b.WeightedCommits {
+			return a.WeightedCommits > b.WeightedCommits
+		}
+		if a.Commits != b.Commits {
+			return a.Commits > b.Commits
+		}
+		return a.Path < b.Path
 	})
 
-	enc := json.NewEncoder(w)
-	for _, k := range keep {
-		body, err := renderCommentBody(k.head.Quadrant, k.raw)
-		if err != nil {
-			return fmt.Errorf("rendering %s: %w", k.head.Path, err)
-		}
-		tag := fmt.Sprintf(commentTagFormat, k.head.Path)
-		entry := CommentEntry{
-			Path:     k.head.Path,
-			Quadrant: k.head.Quadrant,
-			Tag:      tag,
-			Body:     body + "\n" + tag + "\n",
-		}
-		if err := enc.Encode(entry); err != nil {
-			return fmt.Errorf("encoding entry: %w", err)
+	for _, f := range kept {
+		rule := annotationRules[f.Quadrant]
+		line := max(opts.AnchorLines[f.Path], 1)
+		message := fmt.Sprintf("%s %s %s", f.Path, rule.lead, statsSuffix(f, env.Options.Decay))
+		if _, err := fmt.Fprintf(w, "::%s file=%s,line=%d,title=%s::%s\n",
+			rule.level, escapeProperty(f.Path), line, escapeProperty(rule.title), escapeData(message)); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func buildQuadrantSet(in []string) map[string]struct{} {
-	set := make(map[string]struct{})
-	if len(in) == 0 {
-		set["hot-critical"] = struct{}{}
-		set["cold-complex"] = struct{}{}
-		return set
-	}
+func annotateQuadrantSet(in []string) map[string]bool {
+	set := make(map[string]bool)
 	for _, q := range in {
-		set[q] = struct{}{}
+		if q != "" {
+			set[q] = true
+		}
+	}
+	if len(set) == 0 {
+		set["hot-critical"] = true
+		set["cold-complex"] = true
 	}
 	return set
 }
 
-func renderCommentBody(quadrant string, raw json.RawMessage) (string, error) {
-	tmplName, ok := quadrantTemplate[quadrant]
-	if !ok {
-		return "", fmt.Errorf("no template for quadrant %q", quadrant)
+func statsSuffix(f schema.File, decay bool) string {
+	if decay {
+		return fmt.Sprintf("(commits %d, weighted %.1f, complexity %d, authors %d)",
+			f.Commits, f.WeightedCommits, f.Complexity, f.Authors)
 	}
-	tmplBytes, err := commentTemplates.ReadFile("templates/comment/" + tmplName)
-	if err != nil {
-		return "", fmt.Errorf("reading template: %w", err)
-	}
-	table, err := renderStatsTable(raw)
-	if err != nil {
-		return "", err
-	}
-	return strings.Replace(string(tmplBytes), "<!-- hc-stats -->", table, 1), nil
+	return fmt.Sprintf("(commits %d, complexity %d, authors %d)", f.Commits, f.Complexity, f.Authors)
 }
 
-// renderStatsTable produces a markdown table from the JSON entry, in JSON-field
-// order. Keys are humanized (snake_case → Title Case). Null values are skipped;
-// nested objects/arrays are emitted as their JSON form.
-func renderStatsTable(raw json.RawMessage) (string, error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-
-	tok, err := dec.Token()
-	if err != nil {
-		return "", err
-	}
-	if d, ok := tok.(json.Delim); !ok || d != '{' {
-		return "", fmt.Errorf("expected JSON object, got %v", tok)
-	}
-
-	var sb strings.Builder
-	sb.WriteString("| Field | Value |\n")
-	sb.WriteString("| --- | --- |\n")
-
-	for dec.More() {
-		keyTok, err := dec.Token()
-		if err != nil {
-			return "", err
-		}
-		key, ok := keyTok.(string)
-		if !ok {
-			return "", fmt.Errorf("expected string key, got %v", keyTok)
-		}
-
-		var valRaw json.RawMessage
-		if err := dec.Decode(&valRaw); err != nil {
-			return "", err
-		}
-
-		val, skip := formatRawValue(valRaw)
-		if skip {
-			continue
-		}
-		fmt.Fprintf(&sb, "| %s | %s |\n", escapeTableCell(humanize(key)), escapeTableCell(val))
-	}
-	return sb.String(), nil
+// escapeData escapes the message portion of a workflow command (the text after
+// `::`). '%' is escaped first so the escapes it introduces are not re-escaped.
+func escapeData(s string) string {
+	s = strings.ReplaceAll(s, "%", "%25")
+	s = strings.ReplaceAll(s, "\r", "%0D")
+	s = strings.ReplaceAll(s, "\n", "%0A")
+	return s
 }
 
-func formatRawValue(raw json.RawMessage) (string, bool) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var v any
-	if err := dec.Decode(&v); err != nil {
-		return string(raw), false
-	}
-	switch t := v.(type) {
-	case nil:
-		return "", true
-	case bool:
-		return strconv.FormatBool(t), false
-	case string:
-		return t, false
-	case json.Number:
-		if i, err := t.Int64(); err == nil {
-			return strconv.FormatInt(i, 10), false
-		}
-		f, _ := t.Float64()
-		return strconv.FormatFloat(f, 'f', 2, 64), false
-	}
-	return string(raw), false
-}
-
-func humanize(key string) string {
-	parts := strings.Split(key, "_")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if p == "" {
-			continue
-		}
-		out = append(out, strings.ToUpper(p[:1])+p[1:])
-	}
-	return strings.Join(out, " ")
+// escapeProperty escapes a workflow-command property value (file, title), which
+// additionally must escape ':' and ',' so they are not read as delimiters.
+func escapeProperty(s string) string {
+	s = escapeData(s)
+	s = strings.ReplaceAll(s, ":", "%3A")
+	s = strings.ReplaceAll(s, ",", "%2C")
+	return s
 }

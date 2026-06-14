@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"time"
@@ -140,7 +141,7 @@ func buildCommand() *cli.Command {
 					},
 					{
 						Name:  "comment",
-						Usage: "Render per-file PR comment bodies as NDJSON (one entry per line)",
+						Usage: "Emit GitHub Actions annotations for changed hotspot files",
 						Flags: []cli.Flag{
 							&cli.StringFlag{
 								Name:    "input",
@@ -148,9 +149,8 @@ func buildCommand() *cli.Command {
 								Usage:   "Path to JSON file (default: stdin)",
 							},
 							&cli.StringFlag{
-								Name:    "output",
-								Aliases: []string{"o"},
-								Usage:   "Write NDJSON to FILE (default: stdout)",
+								Name:  "anchor-lines",
+								Usage: "TSV file (path<TAB>line) anchoring each annotation to a changed line (default: line 1)",
 							},
 							&cli.StringSliceFlag{
 								Name:  "quadrant",
@@ -357,18 +357,46 @@ func runMdComment(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer func() { _ = input.Close() }()
 
-	var out io.Writer = os.Stdout
-	if outputPath := cmd.String("output"); outputPath != "" {
-		f, err := os.Create(outputPath)
-		if err != nil {
-			return fmt.Errorf("opening output: %w", err)
-		}
-		defer func() { _ = f.Close() }()
-		out = f
+	anchors, err := readAnchorLines(cmd.String("anchor-lines"))
+	if err != nil {
+		return err
 	}
 
-	opts := md.CommentOpts{
-		Quadrants: cmd.StringSlice("quadrant"),
+	opts := md.AnnotateOpts{
+		Quadrants:   cmd.StringSlice("quadrant"),
+		AnchorLines: anchors,
 	}
-	return md.RenderComments(input, out, opts)
+	return md.RenderAnnotations(input, os.Stdout, opts)
+}
+
+// readAnchorLines parses a "path<TAB>line" TSV mapping each changed file to the
+// diff line its annotation should target. Empty src returns nil (everything
+// falls back to line 1). Malformed lines are skipped.
+func readAnchorLines(src string) (map[string]int, error) {
+	if src == "" {
+		return nil, nil
+	}
+	f, err := os.Open(src)
+	if err != nil {
+		return nil, fmt.Errorf("opening --anchor-lines: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	anchors := make(map[string]int)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		path, lineStr, ok := strings.Cut(scanner.Text(), "\t")
+		if !ok {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(lineStr))
+		if err != nil || n < 1 {
+			continue
+		}
+		anchors[strings.TrimSpace(path)] = n
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading --anchor-lines: %w", err)
+	}
+	return anchors, nil
 }

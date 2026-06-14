@@ -47,10 +47,12 @@ internal/analysis/       Merges on path, median-split thresholds, classifies →
 internal/output/         Formats results as table/JSON/CSV (LINES + COMPLEXITY columns;
                          adds SCORE column when decay enabled)
 internal/ignore/         Gitignore-style pattern matching; loads .hcignore files
-internal/md/             Markdown renderers: report.go (analysis JSON → markdown, with
+internal/md/             Envelope consumers: report.go (analysis JSON → markdown, with
                          UpsertFile for marker-bounded injection); ignore.go + summary.go
-                         (LLM prompt for .hcignore generation); comment.go (per-file PR
-                         comment NDJSON, dynamic stats table). Templates in templates/.
+                         (LLM prompt for .hcignore generation); comment.go (emits GitHub
+                         Actions workflow-command annotations for changed hotspot files —
+                         `::warning`/`::notice`, level by quadrant, diff-line anchoring via
+                         AnchorLines). Templates in templates/.
 ```
 
 - **Threshold strategy**: median (p50) of commits and lines across all files — self-adaptive, no configuration needed.
@@ -61,6 +63,7 @@ internal/md/             Markdown renderers: report.go (analysis JSON → markdo
 - **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json` and cannot be combined with `--output <non-json>` (returns an error).
 - **Exclude patterns** (`--exclude/-e`): repeatable flag, plus `.hcignore` file support.
 - **Report writes**: `hc md report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
+- **PR annotations** (`hc md comment`): consumes `hc analyze --json` and emits GitHub Actions workflow-command annotations for changed hotspot files (`::warning` for hot-critical, `::notice` for cold-complex). Defaults to the `hot-critical`+`cold-complex` set, widenable with `--quadrant`. Emitted to stdout and picked up by the runner — no token/permission. Used by `pr-file-comments.yml` via `make pr-annotations`. Annotations render inline on the PR "Files changed" tab only when anchored to a changed line; `--anchor-lines` (a `path<TAB>line` TSV from `make pr-changed-files`) supplies that anchor, otherwise it falls back to line 1 (Checks-tab only). See `docs/proposals/010-pr-hotspot-annotations.md`.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.
 - **File age floor**: files whose first commit is younger than 14 days are excluded from analysis output (the median-split is unfair to files that haven't had time to accumulate churn). Auto-disables when `--since` is 30 days or less, with a one-line stderr note. Disable explicitly with `--no-min-age`. `FirstSeen` is bounded by the `--since` window — see `docs/proposals/file-age-floor.md` for the limitation and the planned Phase 2 fix.
 - Only dependency beyond stdlib is `github.com/urfave/cli/v3`.

@@ -12,14 +12,8 @@ This refactors the existing PR path — [`pr-file-comments.yml`](../../.github/w
 and `hc md comment` — which today posts `subject_type: file` **PR review
 comments** through the REST API. Moving to workflow-command annotations
 **removes** the API posting, the `GITHUB_TOKEN` / `pull-requests: write`
-permission, the find-or-create dedup, and
-[`scripts/post-pr-file-comments.sh`](../../scripts/post-pr-file-comments.sh)
+permission, the find-or-create dedup, and `scripts/post-pr-file-comments.sh`
 entirely.
-
-It also corrects the framing of [009-sarif-pr-annotations.md](009-sarif-pr-annotations.md):
-SARIF → code scanning lands in the **Security tab**, not inline on the PR. This
-proposal is the inline-PR-annotation path; `hc sarif` stays as the separate
-code-scanning/dashboard surface (see Relationship below).
 
 ## Background — current state
 
@@ -109,7 +103,7 @@ anchors to get the zizmor/oxlint inline experience.
 
 ## Refactor specifics
 
-**hc**
+### hc
 
 - `internal/md/comment.go`: replace the NDJSON renderer with the annotation
   emitter. Keep the envelope parsing, the bare-array guard, the quadrant filter,
@@ -121,7 +115,7 @@ anchors to get the zizmor/oxlint inline experience.
   `--input` / `--quadrant`. `--output` is no longer meaningful (annotations must
   reach the runner on stdout) — drop it. No `--format` flag.
 
-**Workflow** (`pr-file-comments.yml`)
+### Workflow (`pr-file-comments.yml`)
 
 - Replace the token-bearing "Post per-file hotspot comments" step with a step
   that runs `hc md comment` — the runner ingests the stdout annotations
@@ -129,7 +123,7 @@ anchors to get the zizmor/oxlint inline experience.
 - Drop `pull-requests: write` → `contents: read` only; drop the `GH_TOKEN` /
   `PR_NUMBER` / `GITHUB_REPOSITORY` env.
 
-**Makefile**
+### Makefile
 
 - `pr-changed-files`: also emit `anchors.txt` (`path<TAB>first-changed-line`).
 - Replace `pr-file-comments` with `pr-annotations`:
@@ -153,13 +147,6 @@ right column records what is dropped and why annotations win for this use case.
 The main thing lost is persistence/threading; for a churn-vs-complexity nudge on
 a PR, regenerating fresh annotations each run (no stale-comment cleanup) is the
 better trade.
-
-## Relationship to 009 (SARIF)
-
-`hc sarif` and the Security-tab dashboard remain valid as a *separate* surface
-(history, dismissal, standard format). This proposal owns the inline-PR
-surface. The `hotspots-sarif.yml` dogfooding workflow can stay (dashboard) or be
-removed if the Security tab isn't wanted; the `hc sarif` command is unaffected.
 
 ## Non-goals
 
