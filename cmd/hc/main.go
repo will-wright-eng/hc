@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/urfave/cli/v3"
+	"github.com/will-wright-eng/hc/internal/annotate"
 	"github.com/will-wright-eng/hc/internal/app"
 	gitpkg "github.com/will-wright-eng/hc/internal/git"
 	"github.com/will-wright-eng/hc/internal/md"
@@ -139,27 +140,27 @@ func buildCommand() *cli.Command {
 						Usage:  "Emit a prompt that asks an LLM to generate a .hcignore file",
 						Action: runMdIgnore,
 					},
-					{
-						Name:  "comment",
-						Usage: "Emit GitHub Actions annotations for changed hotspot files",
-						Flags: []cli.Flag{
-							&cli.StringFlag{
-								Name:    "input",
-								Aliases: []string{"i"},
-								Usage:   "Path to JSON file (default: stdin)",
-							},
-							&cli.StringFlag{
-								Name:  "anchor-lines",
-								Usage: "TSV file (path<TAB>line) anchoring each annotation to a changed line (default: line 1)",
-							},
-							&cli.StringSliceFlag{
-								Name:  "quadrant",
-								Usage: "Restrict to one or more quadrants (default: hot-critical, cold-complex)",
-							},
-						},
-						Action: runMdComment,
+				},
+			},
+			{
+				Name:  "annotate",
+				Usage: "Emit GitHub Actions annotations for changed hotspot files",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "input",
+						Aliases: []string{"i"},
+						Usage:   "Path to JSON file (default: stdin)",
+					},
+					&cli.StringFlag{
+						Name:  "anchor-lines",
+						Usage: "TSV file (path<TAB>line) anchoring each annotation to a changed line (default: line 1)",
+					},
+					&cli.StringSliceFlag{
+						Name:  "quadrant",
+						Usage: "Restrict to one or more quadrants (default: hot-critical, cold-complex)",
 					},
 				},
+				Action: runAnnotate,
 			},
 		},
 	}
@@ -350,7 +351,7 @@ func runMdIgnore(ctx context.Context, cmd *cli.Command) error {
 	return md.RenderIgnore(repoRoot, os.Stdout)
 }
 
-func runMdComment(ctx context.Context, cmd *cli.Command) error {
+func runAnnotate(ctx context.Context, cmd *cli.Command) error {
 	input, err := openJSONInput(cmd)
 	if err != nil {
 		return err
@@ -362,11 +363,11 @@ func runMdComment(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	opts := md.AnnotateOpts{
+	opts := annotate.Options{
 		Quadrants:   cmd.StringSlice("quadrant"),
 		AnchorLines: anchors,
 	}
-	return md.RenderAnnotations(input, os.Stdout, opts)
+	return annotate.Render(input, os.Stdout, opts)
 }
 
 // readAnchorLines parses a "path<TAB>line" TSV mapping each changed file to the

@@ -48,7 +48,7 @@ pr-hotspots-json-no-min-age: ## like pr-hotspots-json but disables the 14-day fi
 	$(REPO_ROOT)/hc analyze --json --no-min-age --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
 
 pr-annotations: ## emit GitHub Actions annotations for changed hotspot files
-	$(REPO_ROOT)/hc md comment --input "$(HOTSPOTS_JSON)" --anchor-lines "$(ANCHORS_TXT)"
+	$(REPO_ROOT)/hc annotate --input "$(HOTSPOTS_JSON)" --anchor-lines "$(ANCHORS_TXT)"
 
 eval-ignore: ## eval `hc md ignore | claude -p` coverage (TRIALS=N, OUTDIR=path)
 	uv run --script $(REPO_ROOT)/scripts/eval_ignore_prompt.py -n 5 -o /tmp/eval-ignore/

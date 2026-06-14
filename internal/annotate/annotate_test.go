@@ -1,4 +1,4 @@
-package md
+package annotate
 
 import (
 	"bytes"
@@ -19,11 +19,11 @@ const sampleAnalyzeJSON = `{
   ]
 }`
 
-func annotationLines(t *testing.T, in string, opts AnnotateOpts) []string {
+func annotationLines(t *testing.T, in string, opts Options) []string {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := RenderAnnotations(strings.NewReader(in), &buf, opts); err != nil {
-		t.Fatalf("RenderAnnotations: %v", err)
+	if err := Render(strings.NewReader(in), &buf, opts); err != nil {
+		t.Fatalf("Render: %v", err)
 	}
 	out := strings.TrimRight(buf.String(), "\n")
 	if out == "" {
@@ -32,8 +32,8 @@ func annotationLines(t *testing.T, in string, opts AnnotateOpts) []string {
 	return strings.Split(out, "\n")
 }
 
-func TestRenderAnnotations_DefaultsFilterAndOrder(t *testing.T) {
-	lines := annotationLines(t, sampleAnalyzeJSON, AnnotateOpts{})
+func TestRender_DefaultsFilterAndOrder(t *testing.T) {
+	lines := annotationLines(t, sampleAnalyzeJSON, Options{})
 
 	// Default = hot-critical + cold-complex; hot-simple "c.go" is dropped.
 	// hot-critical first (weighted desc: b 9.1, d 6.5), then cold-complex a.
@@ -52,20 +52,20 @@ func TestRenderAnnotations_DefaultsFilterAndOrder(t *testing.T) {
 	}
 }
 
-func TestRenderAnnotations_Format(t *testing.T) {
-	lines := annotationLines(t, sampleAnalyzeJSON, AnnotateOpts{Quadrants: []string{"hot-critical"}})
+func TestRender_Format(t *testing.T) {
+	lines := annotationLines(t, sampleAnalyzeJSON, Options{Quadrants: []string{"hot-critical"}})
 	want := "::warning file=b.go,line=1,title=Hot/Critical hotspot::b.go was already a Hot/Critical hotspot on the base branch: high churn and high complexity. Keep the diff focused, lean on tests, and review changes here carefully. (commits 12, weighted 9.1, complexity 250, authors 3)"
 	if lines[0] != want {
 		t.Errorf("format mismatch:\n got: %s\nwant: %s", lines[0], want)
 	}
 }
 
-func TestRenderAnnotations_Escaping(t *testing.T) {
+func TestRender_Escaping(t *testing.T) {
 	// Path with a comma, colon, and percent: those must be escaped in the
 	// `file=` property; in the message, only '%' is escaped (':' and ',' stay).
 	in := `{"schema_version":"1","options":{"decay":false},"thresholds":{"churn":0,"complexity":0},
 	  "files":[{"path":"weird,name:v%1.go","commits":2,"complexity":200,"authors":1,"quadrant":"hot-critical"}]}`
-	lines := annotationLines(t, in, AnnotateOpts{})
+	lines := annotationLines(t, in, Options{})
 	if len(lines) != 1 {
 		t.Fatalf("expected 1 annotation, got %d", len(lines))
 	}
@@ -79,13 +79,13 @@ func TestRenderAnnotations_Escaping(t *testing.T) {
 	}
 }
 
-func TestRenderAnnotations_AnchorLines(t *testing.T) {
+func TestRender_AnchorLines(t *testing.T) {
 	in := `{"schema_version":"1","options":{"decay":true},"thresholds":{"churn":0,"complexity":0},
 	  "files":[
 	    {"path":"anchored.go","commits":5,"weighted_commits":4.0,"complexity":200,"authors":1,"quadrant":"hot-critical"},
 	    {"path":"fallback.go","commits":4,"weighted_commits":3.0,"complexity":200,"authors":1,"quadrant":"hot-critical"}
 	  ]}`
-	lines := annotationLines(t, in, AnnotateOpts{AnchorLines: map[string]int{"anchored.go": 42}})
+	lines := annotationLines(t, in, Options{AnchorLines: map[string]int{"anchored.go": 42}})
 	if !strings.Contains(lines[0], "file=anchored.go,line=42,") {
 		t.Errorf("anchored.go should use line 42: %q", lines[0])
 	}
@@ -94,24 +94,24 @@ func TestRenderAnnotations_AnchorLines(t *testing.T) {
 	}
 }
 
-func TestRenderAnnotations_QuadrantOverride(t *testing.T) {
-	lines := annotationLines(t, sampleAnalyzeJSON, AnnotateOpts{Quadrants: []string{"cold-complex"}})
+func TestRender_QuadrantOverride(t *testing.T) {
+	lines := annotationLines(t, sampleAnalyzeJSON, Options{Quadrants: []string{"cold-complex"}})
 	if len(lines) != 1 || !strings.Contains(lines[0], "file=a.go,") {
 		t.Fatalf("expected only a.go, got %v", lines)
 	}
 }
 
-func TestRenderAnnotations_EmptyQuadrantFallsBackToDefault(t *testing.T) {
-	lines := annotationLines(t, sampleAnalyzeJSON, AnnotateOpts{Quadrants: []string{""}})
+func TestRender_EmptyQuadrantFallsBackToDefault(t *testing.T) {
+	lines := annotationLines(t, sampleAnalyzeJSON, Options{Quadrants: []string{""}})
 	if len(lines) != 3 {
 		t.Fatalf("empty --quadrant should use the default set (3 annotations), got %d", len(lines))
 	}
 }
 
-func TestRenderAnnotations_NoDecayStatsOmitWeighted(t *testing.T) {
+func TestRender_NoDecayStatsOmitWeighted(t *testing.T) {
 	in := `{"schema_version":"1","options":{"decay":false},"thresholds":{"churn":0,"complexity":0},
 	  "files":[{"path":"x.go","commits":7,"complexity":200,"authors":2,"quadrant":"hot-critical"}]}`
-	lines := annotationLines(t, in, AnnotateOpts{})
+	lines := annotationLines(t, in, Options{})
 	if strings.Contains(lines[0], "weighted") {
 		t.Errorf("no-decay should omit weighted: %q", lines[0])
 	}
@@ -120,10 +120,10 @@ func TestRenderAnnotations_NoDecayStatsOmitWeighted(t *testing.T) {
 	}
 }
 
-func TestRenderAnnotations_EmptyEmitsNothing(t *testing.T) {
+func TestRender_EmptyEmitsNothing(t *testing.T) {
 	empty := `{"schema_version":"1","options":{"decay":false},"thresholds":{"churn":0,"complexity":0},"files":[]}`
 	var buf bytes.Buffer
-	if err := RenderAnnotations(strings.NewReader(empty), &buf, AnnotateOpts{}); err != nil {
+	if err := Render(strings.NewReader(empty), &buf, Options{}); err != nil {
 		t.Fatal(err)
 	}
 	if buf.Len() != 0 {
@@ -131,9 +131,9 @@ func TestRenderAnnotations_EmptyEmitsNothing(t *testing.T) {
 	}
 }
 
-func TestRenderAnnotations_RejectsBareArray(t *testing.T) {
+func TestRender_RejectsBareArray(t *testing.T) {
 	var buf bytes.Buffer
-	if err := RenderAnnotations(strings.NewReader(`[{"path":"a.go"}]`), &buf, AnnotateOpts{}); err == nil {
+	if err := Render(strings.NewReader(`[{"path":"a.go"}]`), &buf, Options{}); err == nil {
 		t.Error("expected an error for a bare JSON array")
 	}
 }

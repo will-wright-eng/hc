@@ -53,19 +53,19 @@ anchored to *some* changed line of the file (see Line anchoring).
 
 ## Design
 
-Repurpose `hc md comment` so its **only** output is GitHub workflow-command
-annotations — one per changed hotspot file. The previous NDJSON
-`{path, quadrant, tag, body}` form, its markdown templates, and the
-find-or-create `tag` sentinel are removed: nothing else consumes them, so this
-needs no backwards-compatibility shim and no `--format` flag.
+Replace `hc md comment` with a top-level **`hc annotate`** whose **only** output
+is GitHub workflow-command annotations — one per changed hotspot file. The
+previous NDJSON `{path, quadrant, tag, body}` form, its markdown templates, and
+the find-or-create `tag` sentinel are removed: nothing else consumes them, so
+this needs no backwards-compatibility shim and no `--format` flag.
 
 ```text
 ::warning file=internal/git/git.go,line=12,title=hc: Hot/Critical hotspot::internal/git/git.go was already a Hot/Critical hotspot on the base branch (high churn × high complexity). Keep the diff focused and add tests before changing it.
 ```
 
 - **Level:** `hot-critical` → `warning`, `cold-complex` → `notice` (advisory;
-  these never fail the job). Default quadrant set and ordering are unchanged
-  from `hc md comment`.
+  these never fail the job). Default quadrant set and ordering carry over from
+  the old `hc md comment`.
 - **title:** short, e.g. `hc: Hot/Critical hotspot`.
 - **message:** concise **plain text** — annotations do not render markdown or
   `<details>`, so the current template bodies collapse to a one-paragraph
@@ -76,10 +76,10 @@ needs no backwards-compatibility shim and no `--format` flag.
   property values, or the annotation breaks/truncates. A path or message
   containing `,` or `:` (common) makes this mandatory.
 
-> **Naming:** the command keeps the `hc md comment` name per this refactor, but
-> its output is no longer markdown or a comment. `hc md annotate` (or top-level
-> `hc annotate`) would describe it better — worth deciding before it ships,
-> since renaming later is a breaking change.
+> **Naming (resolved):** shipped as a top-level **`hc annotate`** — not under
+> `md`, since the output is not markdown — with the renderer in a new
+> `internal/annotate` package. The old `hc md comment` name and the `md` grouping
+> are gone.
 
 ### Line anchoring (the key decision)
 
@@ -87,7 +87,7 @@ To render inline, the annotation needs a line in the diff. hc does not — and b
 design should not — parse PR diffs, so the **anchor line is supplied by CI**,
 where the diff is already computed:
 
-- `hc md comment --anchor-lines FILE` reads `path<TAB>line`; a path absent from
+- `hc annotate --anchor-lines FILE` reads `path<TAB>line`; a path absent from
   the map (or no `--anchor-lines`) falls back to `line=1`.
 - The workflow computes anchors from the same `git diff` it already runs:
   `git diff --unified=0 --diff-filter=ACM BASE...HEAD` → first added/changed
@@ -105,20 +105,19 @@ anchors to get the zizmor/oxlint inline experience.
 
 ### hc
 
-- `internal/md/comment.go`: replace the NDJSON renderer with the annotation
-  emitter. Keep the envelope parsing, the bare-array guard, the quadrant filter,
-  and the rank ordering; **delete** the `CommentEntry` shape, the `tag`
-  sentinel, the `<!-- hc-stats -->` markdown stats table, and the
-  `internal/md/templates/comment/*.md` markdown templates. Add the plain-text
-  message builder and the workflow-command escaping helper.
-- `cmd/hc/main.go`: add `--anchor-lines FILE` to `md comment` and keep
-  `--input` / `--quadrant`. `--output` is no longer meaningful (annotations must
-  reach the runner on stdout) — drop it. No `--format` flag.
+- `internal/annotate` (new package): the annotation renderer (`Render` /
+  `Options`). Reuses envelope parsing, a bare-array guard, the quadrant filter,
+  and the rank ordering. The old `internal/md/comment.go` is **deleted** along
+  with the `CommentEntry` shape, the `tag` sentinel, the `<!-- hc-stats -->`
+  markdown stats table, and the `internal/md/templates/comment/*.md` templates.
+- `cmd/hc/main.go`: top-level `annotate` command with `--input` / `--quadrant` /
+  `--anchor-lines FILE`. No `--output` (annotations must reach the runner on
+  stdout) and no `--format` flag.
 
 ### Workflow (`pr-file-comments.yml`)
 
 - Replace the token-bearing "Post per-file hotspot comments" step with a step
-  that runs `hc md comment` — the runner ingests the stdout annotations
+  that runs `hc annotate` — the runner ingests the stdout annotations
   directly.
 - Drop `pull-requests: write` → `contents: read` only; drop the `GH_TOKEN` /
   `PR_NUMBER` / `GITHUB_REPOSITORY` env.
@@ -127,7 +126,7 @@ anchors to get the zizmor/oxlint inline experience.
 
 - `pr-changed-files`: also emit `anchors.txt` (`path<TAB>first-changed-line`).
 - Replace `pr-file-comments` with `pr-annotations`:
-  `hc md comment --input hotspots.json --anchor-lines anchors.txt`.
+  `hc annotate --input hotspots.json --anchor-lines anchors.txt`.
 - `post-pr-file-comments.sh` is deleted along with the review-comment path.
 
 ## Trade-offs vs. the removed review-comment path
@@ -176,4 +175,4 @@ better trade.
 - Anchor lines: present (uses the line), path missing from map (falls back to
   `line=1`), no `--anchor-lines` flag.
 - Empty / filtered-to-empty input → no output.
-- `--quadrant` override and default set, matching `hc md comment` today.
+- `--quadrant` override and default set, matching the prior `hc md comment`.
