@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/will-wright-eng/hc/compare/v1.2.0...v1.2.1) (2026-06-14)
+
+
+### Bug Fixes
+
+* **release:** configs should respect immutable assets ([#41](https://github.com/will-wright-eng/hc/issues/41)) ([b9ef6d8](https://github.com/will-wright-eng/hc/commit/b9ef6d83b48ad80bf56aa8538081e4d0ce407c50))
+* **release:** create tag for draft release so goreleaser ships binari… ([#44](https://github.com/will-wright-eng/hc/issues/44)) ([75584ca](https://github.com/will-wright-eng/hc/commit/75584ca5b6a4d403dbd1d0bde9195e2422ab09b1))
+
 ## [1.2.0](https://github.com/will-wright-eng/hc/compare/v1.1.0...v1.2.0) (2026-05-11)
 
 
