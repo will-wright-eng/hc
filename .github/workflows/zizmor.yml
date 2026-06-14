@@ -1,0 +1,39 @@
+name: zizmor
+
+# Static analysis of this repo's own GitHub Actions workflows.
+# zizmor (https://docs.zizmor.sh) audits for CI/CD security issues —
+# template injection, credential persistence, overbroad permissions, etc.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor audit
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write  # upload SARIF -> Code scanning alerts (free on public repos)
+      contents: read          # checkout
+      actions: read           # read workflow metadata for online audits
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@v0.5.6
+        with:
+          # Inline ::error/::warning annotations on the PR "Files changed" tab.
+          annotations: true
+          # Also upload SARIF so findings surface as Code scanning alerts and as
+          # persistent inline annotations in the PR diff. Default is true; kept
+          # explicit. Set to false to rely solely on the lightweight annotations
+          # above (then `security-events: write` is no longer needed).
+          advanced-security: true

@@ -26,18 +26,36 @@ jobs:
     if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # release-please opened a DRAFT release for this version. GitHub does NOT
+      # create the git tag for a draft (the tag is only created on publish), so
+      # check out the release commit (github.sha) rather than the tag, which
+      # does not exist yet.
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # GoReleaser needs full history
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0  # GoReleaser needs full history + existing tags
 
-      - uses: actions/setup-go@v5
+      # Create the tag GoReleaser builds from and that the draft publishes onto.
+      # Pushing it at the exact release commit makes versioning deterministic and
+      # lets the draft publish attach to an existing tag (no commitish race).
+      # NB: tag pushes don't retrigger any workflow (all gate on branches:[main]).
+      - name: Create and push release tag
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
-      - uses: goreleaser/goreleaser-action@v6
+      # GoReleaser finds release-please's existing draft (use_existing_draft),
+      # uploads the archives into it while it is still a mutable draft, then
+      # flips it to published (draft:false) -> immutable WITH assets attached.
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ needs.release-please.outputs.tag_name }}
