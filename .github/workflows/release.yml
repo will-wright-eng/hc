@@ -15,7 +15,7 @@ jobs:
       releases_created: ${{ steps.rp.outputs.releases_created }}
       tag_name:         ${{ steps.rp.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: rp
         with:
           config-file: release-please-config.json
@@ -26,18 +26,36 @@ jobs:
     if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # release-please opened a DRAFT release for this version. GitHub does NOT
+      # create the git tag for a draft (the tag is only created on publish), so
+      # check out the release commit (github.sha) rather than the tag, which
+      # does not exist yet.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          fetch-depth: 0  # GoReleaser needs full history
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0  # GoReleaser needs full history + existing tags
 
-      - uses: actions/setup-go@v5
+      # Create the tag GoReleaser builds from and that the draft publishes onto.
+      # Pushing it at the exact release commit makes versioning deterministic and
+      # lets the draft publish attach to an existing tag (no commitish race).
+      # NB: tag pushes don't retrigger any workflow (all gate on branches:[main]).
+      - name: Create and push release tag
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: go.mod
 
-      - uses: goreleaser/goreleaser-action@v6
+      # GoReleaser finds release-please's existing draft (use_existing_draft),
+      # uploads the archives into it while it is still a mutable draft, then
+      # flips it to published (draft:false) -> immutable WITH assets attached.
+      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           version: latest
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ needs.release-please.outputs.tag_name }}

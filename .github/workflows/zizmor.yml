@@ -1,0 +1,44 @@
+name: zizmor
+
+# Static analysis of this repo's own GitHub Actions workflows.
+# zizmor (https://docs.zizmor.sh) audits CI/CD for security issues —
+# template injection, credential persistence, overbroad permissions,
+# unpinned actions, etc. Findings are rendered as inline annotations on
+# the pull request's "Files changed" tab.
+#
+# This check is intentionally NON-BLOCKING (continue-on-error): it
+# surfaces issues without gating merges so existing findings can be
+# triaged gradually. Remove `continue-on-error` to make findings fail
+# the check once the backlog is clean.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # checkout + online audits
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938d # v0.5.6
+        # zizmor exits non-zero when it finds issues; keep the job green
+        # while still emitting the PR annotations requested below.
+        continue-on-error: true
+        with:
+          # Emit ::error/::warning annotations on the PR diff. Mutually
+          # exclusive with advanced-security, so that must be disabled.
+          annotations: true
+          advanced-security: false
