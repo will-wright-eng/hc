@@ -16,7 +16,6 @@ import (
 	gitpkg "github.com/will-wright-eng/hc/internal/git"
 	"github.com/will-wright-eng/hc/internal/md"
 	"github.com/will-wright-eng/hc/internal/output"
-	"github.com/will-wright-eng/hc/internal/sarif"
 	"github.com/will-wright-eng/hc/internal/schema"
 )
 
@@ -161,27 +160,6 @@ func buildCommand() *cli.Command {
 						Action: runMdComment,
 					},
 				},
-			},
-			{
-				Name:  "sarif",
-				Usage: "Render analysis JSON as SARIF 2.1.0 for GitHub code scanning",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "input",
-						Aliases: []string{"i"},
-						Usage:   "Path to JSON file (default: stdin)",
-					},
-					&cli.StringFlag{
-						Name:    "output",
-						Aliases: []string{"o"},
-						Usage:   "Write SARIF to FILE (default: stdout)",
-					},
-					&cli.StringSliceFlag{
-						Name:  "quadrant",
-						Usage: "Restrict to one or more quadrants (default: hot-critical, cold-complex)",
-					},
-				},
-				Action: runSarif,
 			},
 		},
 	}
@@ -393,33 +371,4 @@ func runMdComment(ctx context.Context, cmd *cli.Command) error {
 		Quadrants: cmd.StringSlice("quadrant"),
 	}
 	return md.RenderComments(input, out, opts)
-}
-
-func runSarif(ctx context.Context, cmd *cli.Command) error {
-	input, err := openJSONInput(cmd)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = input.Close() }()
-
-	opts := sarif.Options{
-		Quadrants: cmd.StringSlice("quadrant"),
-		Version:   version,
-	}
-
-	// Render into a buffer first so a parse/validation error never clobbers an
-	// existing --output file (mirrors runReport).
-	var buf bytes.Buffer
-	if err := sarif.Render(input, &buf, opts); err != nil {
-		return err
-	}
-
-	if outputPath := cmd.String("output"); outputPath != "" {
-		if err := os.WriteFile(outputPath, buf.Bytes(), 0o644); err != nil {
-			return fmt.Errorf("writing output: %w", err)
-		}
-		return nil
-	}
-	_, err = buf.WriteTo(os.Stdout)
-	return err
 }

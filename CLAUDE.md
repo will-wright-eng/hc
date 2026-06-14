@@ -26,7 +26,6 @@ go test -v -run TestAnalyze_QuadrantClassification ./internal/analysis/
 ./hc --no-min-age                                       # disable the 14-day age floor
 ./hc analyze --json | ./hc md report                    # JSON pipeline → markdown report (e.g. HOTSPOTS.md)
 ./hc analyze --json | ./hc md report --upsert AGENTS.md # inject into existing markdown (e.g. AGENTS.md)
-./hc analyze --json | ./hc sarif > results.sarif        # SARIF 2.1.0 for GitHub code scanning
 ./hc md ignore | claude -p > .hcignore                  # generate a .hcignore via LLM
 ```
 
@@ -38,9 +37,9 @@ Pipeline: **git history → complexity scan → classification → output** (+ o
 
 ```text
 cmd/hc/main.go          CLI entry (urfave/cli v3). Subcommands: analyze, md (report,
-                        ignore, comment), sarif. Root command shares analyze's flags +
-                        Action via analyzeFlags() helper, so bare `hc [flags] [path]` is
-                        sugar for `hc analyze ...`.
+                        ignore, comment). Root command shares analyze's flags + Action
+                        via analyzeFlags() helper, so bare `hc [flags] [path]` is sugar
+                        for `hc analyze ...`.
 internal/git/            Parses git log → []FileChurn {Path, Commits, WeightedCommits, Authors, FirstSeen}
                          Supports decay weighting (decay.go) and rename tracking (rename.go)
 internal/complexity/     Walks file tree, counts LOC or indentation depth → []FileComplexity {Path, Lines}
@@ -52,10 +51,6 @@ internal/md/             Markdown renderers: report.go (analysis JSON → markdo
                          UpsertFile for marker-bounded injection); ignore.go + summary.go
                          (LLM prompt for .hcignore generation); comment.go (per-file PR
                          comment NDJSON, dynamic stats table). Templates in templates/.
-internal/sarif/          Renders the analyze envelope as SARIF 2.1.0 (sarif.go logic,
-                         types.go schema). Consumes schema.Envelope like internal/md;
-                         file-level results (startLine 1), level-based severity, stable
-                         fingerprints, deterministic (no timestamps).
 ```
 
 - **Threshold strategy**: median (p50) of commits and lines across all files — self-adaptive, no configuration needed.
@@ -66,7 +61,6 @@ internal/sarif/          Renders the analyze envelope as SARIF 2.1.0 (sarif.go l
 - **Output format** (`--output/-o`): `table` (default), `json`, `csv`. `--json` is shorthand for `--output json` and cannot be combined with `--output <non-json>` (returns an error).
 - **Exclude patterns** (`--exclude/-e`): repeatable flag, plus `.hcignore` file support.
 - **Report writes**: `hc md report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
-- **SARIF output** (`hc sarif`): consumes `hc analyze --json` and emits SARIF 2.1.0 for GitHub code scanning (Security tab + PR check). Findings are file-level by design (anchored at `startLine: 1`), so they surface in the Security tab and code-scanning check rather than as inline diff annotations. Severity is driven by SARIF `level` (`hot-critical` → warning, `cold-complex`/`hot-simple` → note), not `security-severity`; `cold-simple` never emits. Defaults to the `hot-critical`+`cold-complex` set (like `hc md comment`), widenable with `--quadrant`. Output is deterministic. See `docs/proposals/009-sarif-pr-annotations.md`; a standalone reusable Action is a deferred follow-up.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.
 - **File age floor**: files whose first commit is younger than 14 days are excluded from analysis output (the median-split is unfair to files that haven't had time to accumulate churn). Auto-disables when `--since` is 30 days or less, with a one-line stderr note. Disable explicitly with `--no-min-age`. `FirstSeen` is bounded by the `--since` window — see `docs/proposals/file-age-floor.md` for the limitation and the planned Phase 2 fix.
 - Only dependency beyond stdlib is `github.com/urfave/cli/v3`.
