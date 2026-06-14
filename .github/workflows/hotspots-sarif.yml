@@ -1,0 +1,44 @@
+name: hotspots-sarif
+
+# Render hc hotspots as SARIF and upload to GitHub code scanning, so they
+# surface in the Security tab and as a pull-request check. Informational by
+# nature: `hc sarif` emits warning/note findings and exits 0, so it never
+# blocks a merge. See docs/proposals/009-sarif-pr-annotations.md.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sarif:
+    name: hotspots → code scanning
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write  # upload SARIF -> code scanning (free on public repos)
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0  # churn needs full history
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build hc
+        run: make build
+
+      - name: Render SARIF
+        run: ./hc analyze --json | ./hc sarif > results.sarif
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        with:
+          sarif_file: results.sarif
+          category: hc

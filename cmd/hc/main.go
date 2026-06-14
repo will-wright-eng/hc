@@ -16,6 +16,7 @@ import (
 	gitpkg "github.com/will-wright-eng/hc/internal/git"
 	"github.com/will-wright-eng/hc/internal/md"
 	"github.com/will-wright-eng/hc/internal/output"
+	"github.com/will-wright-eng/hc/internal/sarif"
 	"github.com/will-wright-eng/hc/internal/schema"
 )
 
@@ -160,6 +161,27 @@ func buildCommand() *cli.Command {
 						Action: runMdComment,
 					},
 				},
+			},
+			{
+				Name:  "sarif",
+				Usage: "Render analysis JSON as SARIF 2.1.0 for GitHub code scanning",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "input",
+						Aliases: []string{"i"},
+						Usage:   "Path to JSON file (default: stdin)",
+					},
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Write SARIF to FILE (default: stdout)",
+					},
+					&cli.StringSliceFlag{
+						Name:  "quadrant",
+						Usage: "Restrict to one or more quadrants (default: hot-critical, cold-complex)",
+					},
+				},
+				Action: runSarif,
 			},
 		},
 	}
@@ -371,4 +393,28 @@ func runMdComment(ctx context.Context, cmd *cli.Command) error {
 		Quadrants: cmd.StringSlice("quadrant"),
 	}
 	return md.RenderComments(input, out, opts)
+}
+
+func runSarif(ctx context.Context, cmd *cli.Command) error {
+	input, err := openJSONInput(cmd)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = input.Close() }()
+
+	var out io.Writer = os.Stdout
+	if outputPath := cmd.String("output"); outputPath != "" {
+		f, err := os.Create(outputPath)
+		if err != nil {
+			return fmt.Errorf("opening output: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		out = f
+	}
+
+	opts := sarif.Options{
+		Quadrants: cmd.StringSlice("quadrant"),
+		Version:   version,
+	}
+	return sarif.Render(input, out, opts)
 }
