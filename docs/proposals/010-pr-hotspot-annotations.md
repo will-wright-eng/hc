@@ -8,7 +8,7 @@ and `oxlint` do — by emitting **GitHub Actions workflow commands**
 into check-run annotations shown on the **Files changed** tab and in the
 **Checks** tab.
 
-This refactors the existing PR path — [`pr-file-comments.yml`](../../.github/workflows/pr-file-comments.yml)
+This refactors the existing PR path — [`pr-annotations.yml`](../../.github/workflows/pr-annotations.yml)
 and `hc md comment` — which today posts `subject_type: file` **PR review
 comments** through the REST API. Moving to workflow-command annotations
 **removes** the API posting, the `GITHUB_TOKEN` / `pull-requests: write`
@@ -114,7 +114,7 @@ anchors to get the zizmor/oxlint inline experience.
   `--anchor-lines FILE`. No `--output` (annotations must reach the runner on
   stdout) and no `--format` flag.
 
-### Workflow (`pr-file-comments.yml`)
+### Workflow (`pr-annotations.yml`)
 
 - Replace the token-bearing "Post per-file hotspot comments" step with a step
   that runs `hc annotate` — the runner ingests the stdout annotations

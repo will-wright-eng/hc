@@ -1,4 +1,4 @@
-name: pr-file-comments
+name: pr-annotations
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  comments:
+  annotate:
     runs-on: ubuntu-latest
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
