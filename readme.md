@@ -74,9 +74,9 @@ Run `hc` on every PR and post a sticky comment with the report. See [`.github/wo
 - run: ./hc md report --collapsible --input hotspots.json --output report.md
 ```
 
-This repo also includes [`.github/workflows/pr-file-comments.yml`](.github/workflows/pr-file-comments.yml), which analyzes the PR base branch and posts file-level review comments for changed files that were already `hot-critical` or `cold-complex`. The workflow calls `make pr-changed-files`, `make pr-hotspots-json`, and `make pr-file-comments`; the projection filter uses `hc analyze --files-from changed.txt`, comment bodies are rendered by `hc md comment` (templates in [`internal/md/templates/comment/`](internal/md/templates/comment/)), and the posting logic lives in [`scripts/post-pr-file-comments.sh`](scripts/post-pr-file-comments.sh).
+This repo also includes [`.github/workflows/pr-annotations.yml`](.github/workflows/pr-annotations.yml), which analyzes the PR base branch and annotates changed files that were already `hot-critical` or `cold-complex`. The workflow calls `make pr-changed-files`, `make pr-hotspots-json`, and `make pr-annotations`; the projection filter uses `hc analyze --files-from changed.txt`, and `hc annotate` emits [GitHub Actions workflow-command annotations](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands) (`::warning`/`::notice`) that the runner renders on the "Files changed" tab. `make pr-changed-files` also records each file's first changed line in `anchors.txt`, passed via `--anchor-lines` so annotations land inline on the diff.
 
-Requires `pull-requests: write` permission so the workflow can comment.
+The annotations are emitted to stdout and picked up by the runner — **no token or `pull-requests: write` permission is needed**.
 
 ### Generating a `.hcignore`
 

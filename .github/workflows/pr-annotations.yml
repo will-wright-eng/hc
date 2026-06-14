@@ -1,14 +1,13 @@
-name: pr-file-comments
+name: pr-annotations
 
 on:
   pull_request:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  comments:
+  annotate:
     runs-on: ubuntu-latest
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -17,6 +16,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
@@ -28,15 +28,15 @@ jobs:
       - name: Prepare base worktree
         run: git worktree add --detach ../hc-base "$BASE_SHA"
 
-      - name: Determine changed files
+      - name: Determine changed files and diff anchors
         run: make pr-changed-files
 
       - name: Analyze base branch (restricted to changed files)
         run: make pr-hotspots-json
 
-      - name: Post per-file hotspot comments
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: make pr-file-comments
+      # Workflow-command annotations are emitted to stdout and picked up by the
+      # runner — no token, no API, no pull-requests permission. Annotations on a
+      # changed file's first changed line render inline on the "Files changed"
+      # tab; the rest appear in the Checks tab.
+      - name: Annotate changed hotspot files
+        run: make pr-annotations
