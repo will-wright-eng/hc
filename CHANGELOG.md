@@ -2,7 +2,6 @@
 
 ## [1.3.0](https://github.com/will-wright-eng/hc/compare/v1.2.1...v1.3.0) (2026-06-14)
 
-
 ### Features
 
 * add automated release pipeline ([#26](https://github.com/will-wright-eng/hc/issues/26)) ([4a1e61c](https://github.com/will-wright-eng/hc/commit/4a1e61c424d8048ec3b3a2e3348760a67290c564))
@@ -14,7 +13,6 @@
 * implementing file age floor default ([e062e7a](https://github.com/will-wright-eng/hc/commit/e062e7a4a0b8f44891188295c66909ed3403c999))
 * implementing file age floor default ([d22ddf9](https://github.com/will-wright-eng/hc/commit/d22ddf9051af69c77f23334504125a850fca0710))
 * Post file comments ([a93b25d](https://github.com/will-wright-eng/hc/commit/a93b25d30386c42fb504f6753749e130346cbbd2))
-
 
 ### Bug Fixes
 
@@ -32,7 +30,6 @@
 
 ## [1.2.1](https://github.com/will-wright-eng/hc/compare/v1.2.0...v1.2.1) (2026-06-14)
 
-
 ### Bug Fixes
 
 * **release:** configs should respect immutable assets ([#41](https://github.com/will-wright-eng/hc/issues/41)) ([b9ef6d8](https://github.com/will-wright-eng/hc/commit/b9ef6d83b48ad80bf56aa8538081e4d0ce407c50))
@@ -40,25 +37,21 @@
 
 ## [1.2.0](https://github.com/will-wright-eng/hc/compare/v1.1.0...v1.2.0) (2026-05-11)
 
-
 ### Features
 
 * adding per-file comment render cmd ([#39](https://github.com/will-wright-eng/hc/issues/39)) ([2c40fd1](https://github.com/will-wright-eng/hc/commit/2c40fd1256f5b5ced2f0997061439a071c5bc17f))
 
 ## [1.1.0](https://github.com/will-wright-eng/hc/compare/v1.0.0...v1.1.0) (2026-05-11)
 
-
 ### Features
 
 * from-file flag for git diff name only list ([#31](https://github.com/will-wright-eng/hc/issues/31)) ([c408a1e](https://github.com/will-wright-eng/hc/commit/c408a1e67b980349626185e32639348eb149255c))
-
 
 ### Bug Fixes
 
 * updating gha version ([#29](https://github.com/will-wright-eng/hc/issues/29)) ([497a898](https://github.com/will-wright-eng/hc/commit/497a89862fe163c8e6e95c1b8822c22b68ecc758))
 
 ## 1.0.0 (2026-05-10)
-
 
 ### Features
 
@@ -69,7 +62,6 @@
 * implementing file age floor default ([e062e7a](https://github.com/will-wright-eng/hc/commit/e062e7a4a0b8f44891188295c66909ed3403c999))
 * implementing file age floor default ([d22ddf9](https://github.com/will-wright-eng/hc/commit/d22ddf9051af69c77f23334504125a850fca0710))
 * Post file comments ([a93b25d](https://github.com/will-wright-eng/hc/commit/a93b25d30386c42fb504f6753749e130346cbbd2))
-
 
 ### Bug Fixes
 
