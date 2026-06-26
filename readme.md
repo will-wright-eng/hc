@@ -85,3 +85,7 @@ The annotations are emitted to stdout and picked up by the runner — **no token
 ```sh
 hc md ignore | claude -p > .hcignore
 ```
+
+## License
+
+[GNU General Public License v3.0](LICENSE).
