@@ -1,6 +1,8 @@
 # hc
 
-Hot/Cold codebase analysis -- finds hotspots by combining git churn with file complexity.
+Hot/Cold codebase analysis — finds hotspots by combining git churn with file complexity.
+
+`hc` is built for CI. Run it on pull requests — from a GitHub Actions workflow or behind a GitHub App — and it annotates the diff with the historical state of the code being touched: a warning when a changed file is hot (high churn) and critical (complex), a notice when it is cold but complex. Reviewers see inline, on the "Files changed" tab, whether a change lands in code with a risky history. The same binary works locally for ad-hoc analysis.
 
 ## Install
 
@@ -8,7 +10,36 @@ Hot/Cold codebase analysis -- finds hotspots by combining git churn with file co
 go install github.com/will-wright-eng/hc/cmd/hc@latest
 ```
 
-## Usage
+## CI usage
+
+### PR annotations
+
+[`.github/workflows/pr-annotations.yml`](.github/workflows/pr-annotations.yml) is a working example: on every PR it analyzes the base branch and annotates changed files that were already `hot-critical` (`::warning`) or `cold-complex` (`::notice`). The pipeline is three make targets:
+
+```yaml
+- run: make pr-changed-files   # changed.txt + anchors.txt (first changed line per file)
+- run: make pr-hotspots-json   # hc analyze --json --files-from changed.txt on the base branch
+- run: make pr-annotations     # hc annotate --input hotspots.json --anchor-lines anchors.txt
+```
+
+`hc annotate` consumes `hc analyze --json` output and emits [GitHub Actions workflow-command annotations](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands) to stdout, where the runner picks them up — **no token or `pull-requests: write` permission is needed**. Annotations render inline on the PR diff only when anchored to a changed line; `--anchor-lines` (a `path<TAB>line` TSV) supplies that anchor, otherwise they fall back to line 1 and appear on the Checks tab only.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--input` | `-i` | Path to JSON file (default: stdin) |
+| `--anchor-lines` |  | TSV file (`path<TAB>line`) anchoring each annotation to a changed line (default: line 1) |
+| `--quadrant` |  | Restrict to one or more quadrants (repeatable; default: `hot-critical`, `cold-complex`) |
+
+### PR comment report
+
+For a whole-repo summary instead of (or alongside) inline annotations, render the analysis as markdown and post it as a sticky PR comment. See [`.github/workflows/hotspots.yml`](.github/workflows/hotspots.yml) for a working example — it builds `hc`, analyzes the repo, renders a collapsible markdown report, and upserts a comment on the PR via [`scripts/post-pr-comment.sh`](scripts/post-pr-comment.sh).
+
+```yaml
+- run: ./hc analyze --json > hotspots.json
+- run: ./hc md report --collapsible --input hotspots.json --output report.md
+```
+
+## Local usage
 
 `hc [path]` is sugar for `hc analyze [path]` — bare `hc` analyzes the current repo. Use the explicit `hc analyze ...` form when piping or scripting.
 
@@ -64,19 +95,6 @@ The floor auto-disables when `--since` is 30 days or less (a one-line stderr not
 | `--output` | `-o` | Write report to FILE, overwriting (default: stdout) |
 | `--upsert` |  | Inject report into existing markdown file (preserves surrounding content) |
 | `--collapsible` |  | Wrap hotspot categories in a `<details>` block |
-
-### GitHub Actions
-
-Run `hc` on every PR and post a sticky comment with the report. See [`.github/workflows/hotspots.yml`](.github/workflows/hotspots.yml) for a working example — it builds `hc`, analyzes the repo, renders a collapsible markdown report, and upserts a comment on the PR via [`scripts/post-pr-comment.sh`](scripts/post-pr-comment.sh).
-
-```yaml
-- run: ./hc analyze --json > hotspots.json
-- run: ./hc md report --collapsible --input hotspots.json --output report.md
-```
-
-This repo also includes [`.github/workflows/pr-annotations.yml`](.github/workflows/pr-annotations.yml), which analyzes the PR base branch and annotates changed files that were already `hot-critical` or `cold-complex`. The workflow calls `make pr-changed-files`, `make pr-hotspots-json`, and `make pr-annotations`; the projection filter uses `hc analyze --files-from changed.txt`, and `hc annotate` emits [GitHub Actions workflow-command annotations](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands) (`::warning`/`::notice`) that the runner renders on the "Files changed" tab. `make pr-changed-files` also records each file's first changed line in `anchors.txt`, passed via `--anchor-lines` so annotations land inline on the diff.
-
-The annotations are emitted to stdout and picked up by the runner — **no token or `pull-requests: write` permission is needed**.
 
 ### Generating a `.hcignore`
 
