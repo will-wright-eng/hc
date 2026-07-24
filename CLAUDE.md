@@ -66,5 +66,15 @@ internal/annotate/       Renders the analyze envelope as GitHub Actions workflow
 - **Report writes**: `hc md report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
 - **PR annotations** (`hc annotate`): consumes `hc analyze --json` and emits GitHub Actions workflow-command annotations for changed hotspot files (`::warning` for hot-critical, `::notice` for cold-complex). Defaults to the `hot-critical`+`cold-complex` set, widenable with `--quadrant`. Emitted to stdout and picked up by the runner — no token/permission. Used by `pr-annotations.yml` via `make pr-annotations`. Annotations render inline on the PR "Files changed" tab only when anchored to a changed line; `--anchor-lines` (a `path<TAB>line` TSV from `make pr-changed-files`) supplies that anchor, otherwise it falls back to line 1 (Checks-tab only). See `docs/proposals/010-pr-hotspot-annotations.md`.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.
-- **File age floor**: files whose first commit is younger than 14 days are excluded from analysis output (the median-split is unfair to files that haven't had time to accumulate churn). Auto-disables when `--since` is 30 days or less, with a one-line stderr note. Disable explicitly with `--no-min-age`. `FirstSeen` is bounded by the `--since` window — see `docs/proposals/file-age-floor.md` for the limitation and the planned Phase 2 fix.
+- **File age floor**: files whose first commit is younger than 14 days are excluded from analysis output (the median-split is unfair to files that haven't had time to accumulate churn). Auto-disables when `--since` is 30 days or less, with a one-line stderr note. Disable explicitly with `--no-min-age`. `FirstSeen` is bounded by the `--since` window — see `docs/proposals/015-file-age-floor.md` for the limitation and the planned Phase 2 fix.
 - Only dependency beyond stdlib is `github.com/urfave/cli/v3`.
+
+## Documentation
+
+Structure and lifecycle are governed by [docs/adr/0001](docs/adr/0001-documentation-structure-and-lifecycle.md):
+
+- `docs/adr/` — immutable decision records (`NNNN-slug.md`). Never edit one's substance; supersede it with a new ADR.
+- `docs/design/overview.md` — the living "how it works now" reference; update it in the same change as behavior.
+- `docs/proposals/` — numbered working docs (`NNN-slug.md`; append-only, never reuse a number, gaps expected) with required YAML front matter (`type`, `status`, `created`).
+- `docs/info/` — background research; never prescriptive.
+- Never delete a doc that still has inbound citations — repoint them first.

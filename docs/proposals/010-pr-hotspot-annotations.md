@@ -1,4 +1,10 @@
-# PR Hotspot Annotations via GitHub Actions Workflow Commands
+---
+type: design
+status: shipped
+created: 2026-06-14
+---
+
+# 010 — PR Hotspot Annotations via GitHub Actions Workflow Commands
 
 ## Overview
 

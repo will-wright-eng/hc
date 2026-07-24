@@ -1,4 +1,10 @@
-# Change Coupling Analysis (`hc analyze --coupling`)
+---
+type: design
+status: proposed
+created: 2026-07-13
+---
+
+# 012 — Change Coupling Analysis (`hc analyze --coupling`)
 
 ## Overview
 
@@ -10,12 +16,12 @@ commit — as an opt-in section of the `hc analyze --json` envelope, and teach
 ::notice file=internal/git/git.go,line=12,title=hc: Frequent co-change partner not in this PR::internal/git/git.go changes together with internal/git/git_test.go in 80% of its commits (12 co-changes), but this PR does not touch internal/git/git_test.go. Check whether it needs a matching change.
 ```
 
-This closes stretch goal #1 from [002-design.md](../design/002-design.md)
+This closes stretch goal #1 from [design/overview.md](../design/overview.md)
 ("Change coupling analysis — Not shipped") in a CI-first shape: no standalone
 `hc coupling` command, no table rendering, no report section. The envelope is
 the only producer surface and `hc annotate` is the only consumer surface in
 Phase 1. Methodology background lives in
-[001-hot-cold-codebase-analysis.md](../design/001-hot-cold-codebase-analysis.md)
+[006-hot-cold-codebase-analysis.md](../info/006-hot-cold-codebase-analysis.md)
 (Method 2).
 
 The extraction is cheap: `internal/git` already parses
@@ -253,8 +259,8 @@ contains a `coupling` section:
   methodology.
 - code-maat: <https://github.com/adamtornhill/code-maat> — prior art for
   support/confidence thresholds (`-a coupling`, `min-revs`).
-- [001-hot-cold-codebase-analysis.md](../design/001-hot-cold-codebase-analysis.md)
+- [006-hot-cold-codebase-analysis.md](../info/006-hot-cold-codebase-analysis.md)
   — Method 2: Change Coupling Analysis; co-location principle.
-- [002-design.md](../design/002-design.md) — stretch goal #1 (unshipped).
+- [design/overview.md](../design/overview.md) — stretch goal #1 (unshipped).
 - [010-pr-hotspot-annotations.md](010-pr-hotspot-annotations.md) — the
   annotation mechanism, caps, and escaping rules this builds on.

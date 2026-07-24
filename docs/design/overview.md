@@ -10,7 +10,7 @@ This is based on Adam Tornhill's churn × complexity methodology, designed as a 
 
 ## CLI Interface
 
-```
+```text
 hc [path]                             # sugar for `hc analyze [path]`
 hc analyze [path]                     # hotspot matrix (default: current directory)
 hc analyze --since "6 months"         # restrict churn window
@@ -76,13 +76,13 @@ const (
 )
 ```
 
-Note: directory-level rollup (`DirScore`, `--by-dir`) was scoped out before shipping. File-level scoring is the only mode; consolidation strategies are tracked in [004-consolidation-strategies.md](004-consolidation-strategies.md).
+Note: directory-level rollup (`DirScore`, `--by-dir`) was scoped out before shipping. File-level scoring is the only mode; consolidation strategies are tracked in [014-consolidation-strategies.md](../proposals/014-consolidation-strategies.md).
 
 ### Quadrant Classification
 
 The hotspot matrix from the reference document:
 
-```
+```text
                     LOW CHURN              HIGH CHURN
                 ┌───────────────────┬──────────────────────┐
 HIGH COMPLEXITY │  Cold Complex     │  Hot Critical        │
@@ -99,7 +99,7 @@ LOW COMPLEXITY  │  Cold Simple      │  Hot Simple          │
 
 ## Project Structure
 
-```
+```text
 cmd/hc/main.go                  # entrypoint, CLI definition
 internal/
     app/app.go                  # shared analyze pipeline + options (Analyze)
@@ -119,7 +119,7 @@ Uses `internal/` to avoid premature API surface. Packages can be promoted to pub
 
 ## Analysis Pipeline
 
-```
+```text
 git log --since=<window> --format=... --name-status --follow-renames
     → parse → apply decay → []FileChurn
 
@@ -168,7 +168,7 @@ sort by quadrant priority (HotCritical first), then by weighted commits
 
 ### Table (default)
 
-```
+```text
 QUADRANT        PATH                          COMMITS  LINES  COMPLEXITY  SCORE
 Hot Critical    src/engine/parser.go              87    1240        612   42.1
 Hot Critical    src/engine/evaluator.go           63     980        478   31.4
@@ -209,7 +209,7 @@ Standard CSV with headers matching the table columns.
 ## Status Against Original Stretch Goals
 
 | # | Goal | Status |
-|---|---|---|
+| --- | --- | --- |
 | 1 | Change coupling analysis (`hc coupling`) | Not shipped |
 | 2 | Renamed/moved file tracking | **Shipped** (`internal/git/rename.go`) |
 | 3 | Complexity beyond LOC | **Shipped** as indent-sum default; cyclomatic still open (proposal 001) |
@@ -233,7 +233,7 @@ Open follow-ups live in [docs/proposals/](../proposals/).
 ## Dependencies
 
 | Dependency | Purpose |
-|---|---|
+| --- | --- |
 | `github.com/urfave/cli/v3` | CLI framework |
 | Go stdlib (`os/exec`, `bufio`, `encoding/json`, `text/template`) | Git interaction, file I/O, output, markdown templates |
 
