@@ -26,7 +26,7 @@ Complexity alone is not actionable: a complex file that nobody touches is a mana
 
 Adam Tornhill's methodology (formalized in *Your Code as a Crime Scene* and implemented in CodeScene) produces a 2x2 prioritization matrix:
 
-```
+```text
                     LOW CHURN              HIGH CHURN
                 ┌───────────────────┬───────────────────────┐
 HIGH COMPLEXITY │  Cold Complexity  │  🔥 Critical Hotspot  │
@@ -127,7 +127,7 @@ Cold files — stable, foundational libraries, interfaces, or shared utilities �
 
 This is the practical implementation of dependency direction rules from Clean Architecture and Hexagonal Architecture:
 
-```
+```text
 project/
 ├── domain/          ← hot zone: business logic, changes frequently
 │   ├── orders/
@@ -155,7 +155,7 @@ In large monorepos, hot directories warrant additional governance mechanisms:
 ## Tooling Landscape
 
 | Tool | What It Measures | Output |
-|---|---|---|
+| --- | --- | --- |
 | `git log` + shell | Raw churn rate | File rankings by commit count |
 | `code-maat` | Change coupling, churn, author analysis | CSV reports, coupling maps |
 | CodeScene | Churn + complexity hotspots, team patterns | Visual dashboards (commercial) |

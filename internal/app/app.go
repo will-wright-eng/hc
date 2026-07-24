@@ -214,7 +214,7 @@ func filterToSubtree(scores []analysis.FileScore, subtree string) []analysis.Fil
 //
 // Rules: NoMinAge forces zero. Otherwise, if since parses to a window at or
 // below autoDisableMinAge, the floor disables. Unparseable since values leave
-// the floor on — see docs/proposals/file-age-floor.md.
+// the floor on — see docs/proposals/015-file-age-floor.md.
 func EffectiveMinAge(noMinAge bool, since string) (time.Duration, bool) {
 	if noMinAge {
 		return 0, false

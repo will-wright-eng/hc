@@ -1,4 +1,10 @@
-# Indentation-Based Complexity — Implementation Plan
+---
+type: implementation-plan
+status: shipped
+created: 2026-03-29
+---
+
+# 001 — Indentation-Based Complexity
 
 ## Context
 

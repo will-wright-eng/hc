@@ -1,4 +1,10 @@
-# Code Smell and Bug Analysis
+---
+type: backlog
+status: current
+created: 2026-05-02
+---
+
+# 003 — Code Smell and Bug Analysis
 
 ## Overview
 

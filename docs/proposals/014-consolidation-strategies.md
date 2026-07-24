@@ -1,6 +1,12 @@
-# Consolidation Strategies — Proposal
+---
+type: design
+status: proposed
+created: 2026-04-27
+---
 
-> **Status:** Needs split before implementation. Directory mode (`--by-dir` / `-L`) has been removed so `analyze` has one file-level result shape again. Phase 1 should be file-only strategies (`top`, `quadrant`) over `[]FileScore`; mixed file/directory/summary output needs a separate schema proposal before `rollup`, `outliers`, or `hybrid` ship.
+# 014 — Consolidation Strategies
+
+> **Note:** Needs split before implementation. Directory mode (`--by-dir` / `-L`) has been removed so `analyze` has one file-level result shape again. Phase 1 should be file-only strategies (`top`, `quadrant`) over `[]FileScore`; mixed file/directory/summary output needs a separate schema proposal before `rollup`, `outliers`, or `hybrid` ship.
 
 ## Context
 
@@ -18,7 +24,7 @@ This is a filtering and grouping problem worth solving with dedicated algorithms
 
 Consolidation lives in its own package, called from `runAnalyze` after classification and before formatting. No new commands, no new CLI stages.
 
-```
+```text
 internal/filter/
     filter.go       — Strategy interface, dispatch, shared types
     rollup.go       — Adaptive tree pruning
@@ -60,7 +66,7 @@ type Entry struct {
 Two new flags on `analyze` (and therefore on the bare `hc` form):
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| --- | --- | --- |
 | `--strategy, -S` | unset (Phase 1); `hybrid` once proven (Phase 2) | Consolidation strategy: `rollup`, `top`, `quadrant`, `outliers`, `hybrid` |
 | `--budget, -b` | `20` | Target number of entries when a strategy is active |
 
@@ -130,7 +136,7 @@ Allocate budget slots proportionally to quadrant risk, then take the top entries
 **Default allocation for budget=20:**
 
 | Quadrant | Slots | Rationale |
-|----------|-------|-----------|
+| ---------- | ------- | ----------- |
 | Hot Critical | 10 | Highest risk, most actionable |
 | Hot Simple | 5 | Frequently changing, worth monitoring |
 | Cold Complex | 4 | Latent risk, important for awareness |

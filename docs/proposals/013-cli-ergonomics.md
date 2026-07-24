@@ -1,4 +1,10 @@
-# CLI Ergonomics — Proposal
+---
+type: design
+status: in-progress
+created: 2026-04-27
+---
+
+# 013 — CLI Ergonomics
 
 ## Context
 
@@ -77,7 +83,7 @@ This frees `-f` for a more natural use later (e.g., `--from FILE` for a saved an
 
 **Recommendation.** Collapse into a single opt-out flag with adaptive defaults:
 
-```
+```text
 (no flag)              # decay on, half-life adapts to the analyzed window
 --no-decay             # disable; use raw commit counts
 --since "6 months"     # narrows the window, which shortens the half-life
@@ -123,7 +129,7 @@ Decay is always on. The half-life derives from the age of the oldest commit in s
 
 **Recommendation.**
 
-```
+```text
 --by file        # default
 --by dir
 --by author      # future
@@ -190,7 +196,7 @@ The first option is cleaner. The upsert behavior is a real feature; it deserves 
 
 After applying the above:
 
-```
+```text
 hc [path]                              # default: analyze + render to stdout
 hc analyze [path] [flags]              # data collection stage (JSON out)
 hc filter [flags]                      # shaping stage (per filter-command.md)
@@ -225,7 +231,7 @@ Global:
 ## Out of Scope
 
 - Architectural changes to the pipeline (`analyze | filter | report`) — see `filter-command.md`.
-- New analysis features (cyclomatic, etc.) — see `cyclomatic-analysis.md`.
+- New analysis features (cyclomatic, etc.) — see `001-cyclomatic-analysis.md`.
 - Config file support (`.hcrc`, etc.) — separate question.
 
 ---
@@ -247,7 +253,7 @@ Two views of the same 12 issues. The **tier** view answers "what should I ship f
 These bite on every invocation or hide a real footgun. They also unblock or simplify later tiers.
 
 | # | Change | Why first | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | Default action: `hc` → `hc analyze` | Removes friction from every invocation. | ✅ Implemented |
 | 11 | Rename `report --output` → `--upsert`; make `--output` overwrite | Current behavior contradicts every other Unix tool — surprising even to the author. | ✅ Implemented |
 | 3 | `--format` → `-o, --output FORMAT`; add `--json` | Frees `-f` from a tar/grep/find collision. Hits every JSON pipeline. | ✅ Implemented |
@@ -258,7 +264,7 @@ These bite on every invocation or hide a real footgun. They also unblock or simp
 Lower frequency but worth doing in one batch since they're all renames or boolean→enum conversions.
 
 | # | Change | Why second | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 6 | `--ignore` / `-x` → `--exclude` / `-e` | Aligns with tar/rsync/grep. `-x` carries a strong "extract" prior. | ✅ Implemented |
 | 7 | `--by-dir` boolean → `--by file\|dir\|author` enum | Extensible. Removes another short-flag collision. | ❌ Not implemented |
 | 5 | `prompt ignore-file-spec` → `prompt ignore` | Drops the hyphenated leaf. Sets the pattern for future `prompt <noun>` commands. | ✅ Implemented |
@@ -269,7 +275,7 @@ Lower frequency but worth doing in one batch since they're all renames or boolea
 Standard-flag hygiene and documentation. None of these block anything.
 
 | # | Change | Why last | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 10 | Add `--color=auto\|always\|never`, `-v`, `-q`; honor `NO_COLOR`; audit stderr/stdout split on `analyze` | Only matters in specific contexts (CI, scripts, no-color terminals). | ❌ Not implemented |
 | 8 | Optional: rename `--top` → `--limit` long form | Defensible either way. Keep `-n`. | ✅ Implemented |
 | 9 | Document `--since` parser semantics | No code change. | ❌ Not documented |

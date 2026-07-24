@@ -1,6 +1,12 @@
+---
+type: analysis
+status: current
+created: 2026-07-02
+pin: c2cd6b4
+---
+
 # 011 — Repo Best-Practices Audit
 
-**Date:** 2026-07-02
 **Scope:** repository state at v1.3.0 (commit `c2cd6b4`)
 
 ## Summary

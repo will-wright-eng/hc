@@ -1,4 +1,10 @@
-# Pipeline Polish: Escaping, Cancellation, and a JSON Contract
+---
+type: implementation-plan
+status: shipped
+created: 2026-05-14
+---
+
+# 008 — Pipeline Polish: Escaping, Cancellation, and a JSON Contract
 
 ## Overview
 
