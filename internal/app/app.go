@@ -100,28 +100,18 @@ func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	patterns = append(patterns, opts.Excludes...)
 	ig := ignore.New(patterns)
 
-	logOpts := gitpkg.LogOptions{
+	logRes, err := gitpkg.LogWithOptions(ctx, gitpkg.LogOptions{
 		RepoPath: repoRoot,
 		Since:    opts.Since,
 		Ignore:   ig,
 		Decay:    opts.Decay,
 		Now:      opts.Now,
+		Coupling: opts.Coupling,
+	})
+	if err != nil {
+		return AnalyzeResult{}, fmt.Errorf("reading git history: %w", err)
 	}
-	var churns []gitpkg.FileChurn
-	var pairs []gitpkg.CouplingPair
-	if opts.Coupling {
-		logRes, err := gitpkg.LogWithCoupling(ctx, logOpts)
-		if err != nil {
-			return AnalyzeResult{}, fmt.Errorf("reading git history: %w", err)
-		}
-		churns, pairs = logRes.Churn, logRes.Pairs
-	} else {
-		var err error
-		churns, err = gitpkg.LogWithOptions(ctx, logOpts)
-		if err != nil {
-			return AnalyzeResult{}, fmt.Errorf("reading git history: %w", err)
-		}
-	}
+	churns := logRes.Churn
 
 	complexities, err := complexity.WalkWithOptions(repoRoot, complexity.Options{Ignore: ig})
 	if err != nil {
@@ -139,14 +129,13 @@ func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	// filters below shrink (and mutate the backing array of) scores.
 	var coupling []analysis.CouplingScore
 	if opts.Coupling {
-		coupling = analysis.AnalyzeCoupling(pairs, res.Files)
+		coupling = analysis.AnalyzeCoupling(logRes.Pairs, res.Files)
 	}
 
 	if subtree != "" {
 		scores = filterToSubtree(scores, subtree)
-		prefix := subtree + "/"
 		coupling = filterCouplingOneSide(coupling, func(p string) bool {
-			return p == subtree || strings.HasPrefix(p, prefix)
+			return inSubtree(p, subtree)
 		})
 	}
 
@@ -245,13 +234,17 @@ func filterToFiles(scores []analysis.FileScore, want map[string]struct{}) []anal
 	return out
 }
 
-// filterToSubtree keeps scores whose path equals subtree or is nested under it.
-// Subtree must be a forward-slash, repo-root-relative path with no trailing slash.
+// inSubtree reports whether path equals subtree or is nested under it. Subtree
+// must be a forward-slash, repo-root-relative path with no trailing slash.
+func inSubtree(path, subtree string) bool {
+	return path == subtree || strings.HasPrefix(path, subtree+"/")
+}
+
+// filterToSubtree keeps scores whose path is in the subtree.
 func filterToSubtree(scores []analysis.FileScore, subtree string) []analysis.FileScore {
-	prefix := subtree + "/"
 	out := scores[:0]
 	for _, s := range scores {
-		if s.Path == subtree || strings.HasPrefix(s.Path, prefix) {
+		if inSubtree(s.Path, subtree) {
 			out = append(out, s)
 		}
 	}

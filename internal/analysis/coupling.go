@@ -43,12 +43,12 @@ func AnalyzeCoupling(pairs []git.CouplingPair, files []FileScore) []CouplingScor
 
 	scores := make([]CouplingScore, 0)
 	for _, p := range pairs {
+		if p.Support < CouplingMinSupport {
+			continue
+		}
 		wa, okA := weight[p.A]
 		wb, okB := weight[p.B]
 		if !okA || !okB {
-			continue
-		}
-		if p.Support < CouplingMinSupport {
 			continue
 		}
 		var confAB, confBA float64

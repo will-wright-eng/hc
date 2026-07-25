@@ -43,34 +43,28 @@ type LogOptions struct {
 	Decay bool
 	// Now is the reference time for decay weighting. Zero means time.Now().
 	Now time.Time
+	// Coupling enables change-coupling pair extraction over the same log pass.
+	Coupling bool
 }
 
 // Log runs git log and returns per-file churn data.
 // repoPath is the root of the git repository.
 // since is an optional time window (e.g. "6 months") passed to --since.
 func Log(ctx context.Context, repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileChurn, error) {
-	return LogWithOptions(ctx, LogOptions{
+	res, err := LogWithOptions(ctx, LogOptions{
 		RepoPath: repoPath,
 		Since:    since,
 		Ignore:   ig,
 		Decay:    decay,
 	})
+	return res.Churn, err
 }
 
-// LogWithOptions runs git log and returns per-file churn data. ctx cancels the
-// underlying git invocations.
-func LogWithOptions(ctx context.Context, opts LogOptions) ([]FileChurn, error) {
-	res, err := logWithOptions(ctx, opts, false)
-	if err != nil {
-		return nil, err
-	}
-	return res.Churn, nil
-}
-
-// logWithOptions is the shared core behind LogWithOptions and LogWithCoupling.
-// When coupling is true, pair extraction runs as a second aggregation over the
-// same commit list.
-func logWithOptions(ctx context.Context, opts LogOptions, coupling bool) (LogResult, error) {
+// LogWithOptions runs git log and returns per-file churn data, plus change
+// coupling pairs when opts.Coupling is set — a second aggregation over the
+// same commit list, no extra git invocation. ctx cancels the underlying git
+// invocations.
+func LogWithOptions(ctx context.Context, opts LogOptions) (LogResult, error) {
 	commitFiles, err := gitLogFiles(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
 		return LogResult{}, err
@@ -166,8 +160,8 @@ func logWithOptions(ctx context.Context, opts LogOptions, coupling bool) (LogRes
 	}
 
 	res := LogResult{Churn: result}
-	if coupling {
-		ignoreRevs, err := LoadIgnoreRevs(opts.RepoPath)
+	if opts.Coupling {
+		ignoreRevs, err := loadIgnoreRevs(opts.RepoPath)
 		if err != nil {
 			return LogResult{}, err
 		}

@@ -256,11 +256,9 @@ func TestRender_PartnerNoticeEscaping(t *testing.T) {
 func TestRender_NoCouplingSectionUnchanged(t *testing.T) {
 	// Same envelope minus the coupling section: output must be byte-identical
 	// to the pre-coupling behavior (no partner notices at all).
-	var withOut bytes.Buffer
-	if err := Render(strings.NewReader(sampleAnalyzeJSON), &withOut, Options{}); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(withOut.String(), "co-change") {
-		t.Errorf("envelope without coupling section must not emit partner notices: %q", withOut.String())
+	for _, ln := range annotationLines(t, sampleAnalyzeJSON, Options{}) {
+		if strings.Contains(ln, "co-change") {
+			t.Errorf("envelope without coupling section must not emit partner notices: %q", ln)
+		}
 	}
 }

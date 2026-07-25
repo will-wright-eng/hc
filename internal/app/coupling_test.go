@@ -2,9 +2,6 @@ package app
 
 import (
 	"context"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -14,61 +11,28 @@ import (
 // times just days before "now" (2020-02-01) so the age floor drops it.
 func initCouplingRepo(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-
-	mustRun := func(date string, args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=test",
-			"GIT_AUTHOR_EMAIL=test@example.com",
-			"GIT_COMMITTER_NAME=test",
-			"GIT_COMMITTER_EMAIL=test@example.com",
-			"GIT_AUTHOR_DATE="+date,
-			"GIT_COMMITTER_DATE="+date,
-		)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-
-	writeFile := func(rel, body string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	mustRun("2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
-	mustRun("2020-01-01T00:00:00Z", "config", "user.email", "test@example.com")
-	mustRun("2020-01-01T00:00:00Z", "config", "user.name", "test")
-	mustRun("2020-01-01T00:00:00Z", "config", "commit.gpgsign", "false")
+	dir := initGitRepo(t, "2020-01-01T00:00:00Z")
 
 	for i := 1; i <= 5; i++ {
 		date := time.Date(2020, 1, i, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
-		writeFile("a.go", "package main\n// rev "+date+"\n")
-		writeFile("b.go", "package main\n// rev "+date+"\n")
-		mustRun(date, "add", ".")
-		mustRun(date, "commit", "-q", "-m", "co-change")
+		writeTestFile(t, dir, "a.go", "package main\n// rev "+date+"\n")
+		writeTestFile(t, dir, "b.go", "package main\n// rev "+date+"\n")
+		mustRunGit(t, dir, date, "add", ".")
+		mustRunGit(t, dir, date, "commit", "-q", "-m", "co-change")
 	}
-	writeFile("c.go", "package main\n")
-	mustRun("2020-01-06T00:00:00Z", "add", ".")
-	mustRun("2020-01-06T00:00:00Z", "commit", "-q", "-m", "solo")
+	writeTestFile(t, dir, "c.go", "package main\n")
+	mustRunGit(t, dir, "2020-01-06T00:00:00Z", "add", ".")
+	mustRunGit(t, dir, "2020-01-06T00:00:00Z", "commit", "-q", "-m", "solo")
 
 	for i := 27; i <= 31; i++ {
 		date := time.Date(2020, 1, i, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
-		writeFile("a.go", "package main\n// young rev "+date+"\n")
-		writeFile("young.go", "package main\n// rev "+date+"\n")
-		mustRun(date, "add", ".")
-		mustRun(date, "commit", "-q", "-m", "young co-change")
+		writeTestFile(t, dir, "a.go", "package main\n// young rev "+date+"\n")
+		writeTestFile(t, dir, "young.go", "package main\n// rev "+date+"\n")
+		mustRunGit(t, dir, date, "add", ".")
+		mustRunGit(t, dir, date, "commit", "-q", "-m", "young co-change")
 	}
 
-	root, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return root
+	return dir
 }
 
 var couplingNow = time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC)

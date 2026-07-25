@@ -7,9 +7,57 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/will-wright-eng/hc/internal/analysis"
 )
+
+// mustRunGit runs a git command in dir with a deterministic test identity and
+// the given author/committer date.
+func mustRunGit(t *testing.T, dir, date string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test",
+		"GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test",
+		"GIT_COMMITTER_EMAIL=test@example.com",
+		"GIT_AUTHOR_DATE="+date,
+		"GIT_COMMITTER_DATE="+date,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func writeTestFile(t *testing.T, dir, rel, body string) {
+	t.Helper()
+	full := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// initGitRepo creates an empty git repo in a temp dir and returns its
+// symlink-resolved root (matching the canonical paths git log emits).
+func initGitRepo(t *testing.T, date string) string {
+	t.Helper()
+	dir := t.TempDir()
+	mustRunGit(t, dir, date, "init", "-q", "-b", "main")
+	mustRunGit(t, dir, date, "config", "user.email", "test@example.com")
+	mustRunGit(t, dir, date, "config", "user.name", "test")
+	mustRunGit(t, dir, date, "config", "commit.gpgsign", "false")
+
+	root, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
 
 // initTestRepo creates a temp git repo with two source files in different
 // subdirectories, each with at least one commit, and returns the repo root.
@@ -17,60 +65,22 @@ import (
 // trips them. Tests still pass NoMinAge=true to be explicit.
 func initTestRepo(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	const date = "2020-01-01T00:00:00Z"
+	dir := initGitRepo(t, date)
 
-	mustRun := func(cmdName string, args ...string) {
-		t.Helper()
-		cmd := exec.Command(cmdName, args...)
-		cmd.Dir = dir
-		// Force commit dates well in the past so age-floor logic never triggers
-		// even if a future test forgets NoMinAge.
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=test",
-			"GIT_AUTHOR_EMAIL=test@example.com",
-			"GIT_COMMITTER_NAME=test",
-			"GIT_COMMITTER_EMAIL=test@example.com",
-			"GIT_AUTHOR_DATE=2020-01-01T00:00:00Z",
-			"GIT_COMMITTER_DATE=2020-01-01T00:00:00Z",
-		)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("%s %v: %v\n%s", cmdName, args, err, out)
-		}
-	}
+	writeTestFile(t, dir, "internal/foo/foo.go", "package foo\n\nfunc Foo() {\n\treturn\n}\n")
+	writeTestFile(t, dir, "internal/foo/bar.go", "package foo\n\nfunc Bar() {\n\treturn\n}\n")
+	writeTestFile(t, dir, "cmd/main.go", "package main\n\nfunc main() {}\n")
 
-	mustRun("git", "init", "-q", "-b", "main")
-	mustRun("git", "config", "user.email", "test@example.com")
-	mustRun("git", "config", "user.name", "test")
-	mustRun("git", "config", "commit.gpgsign", "false")
-
-	writeFile := func(rel, body string) {
-		t.Helper()
-		full := filepath.Join(dir, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	writeFile("internal/foo/foo.go", "package foo\n\nfunc Foo() {\n\treturn\n}\n")
-	writeFile("internal/foo/bar.go", "package foo\n\nfunc Bar() {\n\treturn\n}\n")
-	writeFile("cmd/main.go", "package main\n\nfunc main() {}\n")
-
-	mustRun("git", "add", ".")
-	mustRun("git", "commit", "-q", "-m", "initial")
+	mustRunGit(t, dir, date, "add", ".")
+	mustRunGit(t, dir, date, "commit", "-q", "-m", "initial")
 
 	// Second commit touches one file so churn varies across files.
-	writeFile("internal/foo/foo.go", "package foo\n\nfunc Foo() {\n\treturn\n}\n\nfunc Foo2() {}\n")
-	mustRun("git", "add", ".")
-	mustRun("git", "commit", "-q", "-m", "second")
+	writeTestFile(t, dir, "internal/foo/foo.go", "package foo\n\nfunc Foo() {\n\treturn\n}\n\nfunc Foo2() {}\n")
+	mustRunGit(t, dir, date, "add", ".")
+	mustRunGit(t, dir, date, "commit", "-q", "-m", "second")
 
-	root, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return root
+	return dir
 }
 
 func TestAnalyze_Root_ProducesChurn(t *testing.T) {
@@ -312,5 +322,35 @@ func TestAnalyze_NotAGitRepo(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for non-git directory, got nil")
+	}
+}
+
+func TestEffectiveMinAge(t *testing.T) {
+	tests := []struct {
+		name         string
+		noMinAge     bool
+		since        string
+		wantDuration time.Duration
+		wantAuto     bool
+	}{
+		{"default", false, "", DefaultMinAge, false},
+		{"explicit opt-out", true, "", 0, false},
+		{"opt-out wins over since", true, "6 months", 0, false},
+		{"wide --since keeps floor", false, "6 months", DefaultMinAge, false},
+		{"narrow --since auto-disables", false, "2 weeks", 0, true},
+		{"30-day boundary auto-disables", false, "30 days", 0, true},
+		{"31 days keeps floor", false, "31 days", DefaultMinAge, false},
+		{"unparseable --since keeps floor", false, "yesterday", DefaultMinAge, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, auto := EffectiveMinAge(tt.noMinAge, tt.since)
+			if got != tt.wantDuration {
+				t.Errorf("duration: got %v, want %v", got, tt.wantDuration)
+			}
+			if auto != tt.wantAuto {
+				t.Errorf("auto-disabled: got %v, want %v", auto, tt.wantAuto)
+			}
+		})
 	}
 }

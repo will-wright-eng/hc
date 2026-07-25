@@ -19,7 +19,7 @@ func TestLogWithCoupling_CountsSameCommitPairs(t *testing.T) {
 	commitPaths(t, repo, "2020-01-02T00:00:00Z", map[string]string{"a.go": "package a // v2\n", "b.go": "package b // v2\n"})
 	commitPaths(t, repo, "2020-01-03T00:00:00Z", map[string]string{"a.go": "package a // v3\n"})
 
-	res, err := LogWithCoupling(context.Background(), LogOptions{RepoPath: repo})
+	res, err := LogWithOptions(context.Background(), LogOptions{RepoPath: repo, Coupling: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,11 +45,11 @@ func TestLogWithCoupling_IgnoreRevsSkipsPairsNotChurn(t *testing.T) {
 	noisy := commitPaths(t, repo, "2020-01-02T00:00:00Z", map[string]string{"a.go": "package a // v2\n", "b.go": "package b // v2\n"})
 
 	revsFile := "# format-everything commit\n" + noisy + "\nnot-a-sha\n\n"
-	if err := os.WriteFile(filepath.Join(repo, IgnoreRevsFile), []byte(revsFile), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, ignoreRevsFile), []byte(revsFile), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := LogWithCoupling(context.Background(), LogOptions{RepoPath: repo})
+	res, err := LogWithOptions(context.Background(), LogOptions{RepoPath: repo, Coupling: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestLogWithCoupling_RenameMergesPairKeys(t *testing.T) {
 	runGit(t, repo, "2020-01-02T00:00:00Z", "commit", "-q", "-m", "rename a.go to c.go")
 	commitPaths(t, repo, "2020-01-03T00:00:00Z", map[string]string{"c.go": "package main\nfunc A() {}\nfunc B() {}\n", "b.go": "package main\n// v2\n"})
 
-	res, err := LogWithCoupling(context.Background(), LogOptions{RepoPath: repo})
+	res, err := LogWithOptions(context.Background(), LogOptions{RepoPath: repo, Coupling: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,9 +92,10 @@ func TestLogWithCoupling_IgnoredPathsNeverPair(t *testing.T) {
 	commitPaths(t, repo, "2020-01-01T00:00:00Z", files)
 	commitPaths(t, repo, "2020-01-02T00:00:00Z", map[string]string{"a.go": "package a // v2\n", "b.go": "package b // v2\n", "gen.pb.go": "package gen // v2\n"})
 
-	res, err := LogWithCoupling(context.Background(), LogOptions{
+	res, err := LogWithOptions(context.Background(), LogOptions{
 		RepoPath: repo,
 		Ignore:   ignore.New([]string{"*.pb.go"}),
+		Coupling: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -112,10 +113,11 @@ func TestLogWithCoupling_DecayWeightsSupport(t *testing.T) {
 	commitPaths(t, repo, "2020-01-01T00:00:00Z", map[string]string{"a.go": "package a\n", "b.go": "package b\n"})
 	commitPaths(t, repo, "2020-01-06T00:00:00Z", map[string]string{"a.go": "package a // v2\n", "b.go": "package b // v2\n"})
 
-	res, err := LogWithCoupling(context.Background(), LogOptions{
+	res, err := LogWithOptions(context.Background(), LogOptions{
 		RepoPath: repo,
 		Decay:    true,
 		Now:      time.Date(2020, 1, 11, 0, 0, 0, 0, time.UTC),
+		Coupling: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +139,7 @@ func TestLogWithCoupling_DecayWeightsSupport(t *testing.T) {
 func TestLoadIgnoreRevs(t *testing.T) {
 	dir := t.TempDir()
 
-	revs, err := LoadIgnoreRevs(dir)
+	revs, err := loadIgnoreRevs(dir)
 	if err != nil || revs != nil {
 		t.Fatalf("missing file: want (nil, nil), got (%v, %v)", revs, err)
 	}
@@ -145,10 +147,10 @@ func TestLoadIgnoreRevs(t *testing.T) {
 	sha := strings.Repeat("a", 40)
 	upper := strings.Repeat("B", 39) + "0"
 	content := "# comment\n\n" + sha + "\n" + upper + "\nshort\nzz" + strings.Repeat("f", 38) + "\n"
-	if err := os.WriteFile(filepath.Join(dir, IgnoreRevsFile), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ignoreRevsFile), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	revs, err = LoadIgnoreRevs(dir)
+	revs, err = loadIgnoreRevs(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

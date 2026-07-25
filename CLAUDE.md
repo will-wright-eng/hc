@@ -42,7 +42,7 @@ cmd/hc/main.go          CLI entry (urfave/cli v3). Subcommands: analyze, md (rep
                         for `hc analyze ...`.
 internal/git/            Parses git log → []FileChurn {Path, Commits, WeightedCommits, Authors, FirstSeen}
                          Supports decay weighting (decay.go), rename tracking (rename.go), and
-                         change-coupling pair extraction (coupling.go, LogWithCoupling)
+                         change-coupling pair extraction (coupling.go, LogOptions.Coupling)
 internal/complexity/     Walks file tree, counts LOC or indentation depth → []FileComplexity {Path, Lines}
 internal/analysis/       Merges on path, median-split thresholds, classifies → []FileScore
 internal/output/         Formats results as table/JSON/CSV (LINES + COMPLEXITY columns;

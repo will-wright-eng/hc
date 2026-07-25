@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -16,7 +15,7 @@ func TestLogWithOptions_UsesNowForDecay(t *testing.T) {
 	commitFile(t, repo, "old.go", "package old\n", "2020-01-01T00:00:00Z")
 	commitFile(t, repo, "new.go", "package new\n", "2020-01-06T00:00:00Z")
 
-	churns, err := LogWithOptions(context.Background(), LogOptions{
+	res, err := LogWithOptions(context.Background(), LogOptions{
 		RepoPath: repo,
 		Decay:    true,
 		Now:      time.Date(2020, 1, 11, 0, 0, 0, 0, time.UTC),
@@ -26,7 +25,7 @@ func TestLogWithOptions_UsesNowForDecay(t *testing.T) {
 	}
 
 	byPath := make(map[string]FileChurn)
-	for _, c := range churns {
+	for _, c := range res.Churn {
 		byPath[c.Path] = c
 	}
 
@@ -95,15 +94,7 @@ func initLogTestRepo(t *testing.T) string {
 
 func commitFile(t *testing.T, repo, rel, body, date string) {
 	t.Helper()
-	full := filepath.Join(repo, rel)
-	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(full, []byte(body), 0644); err != nil {
-		t.Fatal(err)
-	}
-	runGit(t, repo, date, "add", rel)
-	runGit(t, repo, date, "commit", "-q", "-m", rel)
+	commitPaths(t, repo, date, map[string]string{rel: body})
 }
 
 func runGit(t *testing.T, repo, date string, args ...string) {

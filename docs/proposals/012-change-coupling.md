@@ -172,9 +172,10 @@ contains a `coupling` section:
   `RenameMap`, drop ignored paths and self-pairs, then count each unordered
   pair once per qualifying commit (`map[[2]string]*pairStats`). Floor pruning
   happens after aggregation.
-- Return shape: a new `LogResult{Churn []FileChurn, Pairs []CouplingPair}`
-  from a `LogWithCoupling` variant (or an extra return — decide at
-  implementation), keeping `LogWithOptions`'s signature for existing callers.
+- Return shape: `LogWithOptions` returns
+  `LogResult{Churn []FileChurn, Pairs []CouplingPair}`, with pair extraction
+  gated on `LogOptions.Coupling`; the `Log` convenience wrapper keeps the
+  churn-only shape for existing callers.
 
 ### `internal/analysis` / `internal/output`
 

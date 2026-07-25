@@ -285,7 +285,6 @@ func buildEnvelope(result app.AnalyzeResult, opts app.AnalyzeOptions) schema.Env
 			Decay:    result.Decay,
 			MinAge:   minAge,
 			Excludes: opts.Excludes,
-			Coupling: opts.Coupling,
 		},
 		Thresholds: schema.Thresholds{
 			Churn:      result.ChurnThreshold,
@@ -293,7 +292,10 @@ func buildEnvelope(result app.AnalyzeResult, opts app.AnalyzeOptions) schema.Env
 		},
 		Files: output.BuildFiles(result.Files, result.Decay),
 	}
-	if opts.Coupling {
+	// Non-nil (possibly empty) Coupling is the result's own "coupling ran"
+	// signal — derive from it rather than re-reading the option.
+	if result.Coupling != nil {
+		env.Options.Coupling = true
 		env.Coupling = output.BuildCoupling(result.Coupling)
 	}
 	return env

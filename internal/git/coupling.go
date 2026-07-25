@@ -1,10 +1,7 @@
 package git
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -13,11 +10,11 @@ import (
 	"github.com/will-wright-eng/hc/internal/ignore"
 )
 
-// IgnoreRevsFile is the standard filename git and GitHub honor for
+// ignoreRevsFile is the standard filename git and GitHub honor for
 // `git blame --ignore-revs-file`. Commits listed there are treated as noise
 // (mass renames, format-everything commits) and skipped during coupling pair
 // extraction. Churn counting is unaffected.
-const IgnoreRevsFile = ".git-blame-ignore-revs"
+const ignoreRevsFile = ".git-blame-ignore-revs"
 
 // CouplingPair is the co-change aggregate for an unordered file pair.
 // A < B lexicographically. Support is the raw co-change commit count;
@@ -31,36 +28,29 @@ type CouplingPair struct {
 }
 
 // LogResult bundles per-file churn with coupling pairs extracted from the
-// same git log pass.
+// same git log pass. Pair order is unspecified; internal/analysis imposes a
+// total order after applying the noise floors.
 type LogResult struct {
 	Churn []FileChurn
 	Pairs []CouplingPair
 }
 
-// LogWithCoupling is LogWithOptions plus change-coupling pair extraction over
-// the same history pass — no extra git invocation. Commits listed in the repo
-// root's .git-blame-ignore-revs are skipped for pairs only.
-func LogWithCoupling(ctx context.Context, opts LogOptions) (LogResult, error) {
-	return logWithOptions(ctx, opts, true)
-}
-
-// LoadIgnoreRevs reads <repoRoot>/.git-blame-ignore-revs into a set of
+// loadIgnoreRevs reads <repoRoot>/.git-blame-ignore-revs into a set of
 // lowercase commit SHAs. A missing file yields an empty set. Blank lines and
 // `#` comments are skipped, as are lines that aren't full 40/64-char hex
 // object names — hc is best-effort where git blame would error.
-func LoadIgnoreRevs(repoRoot string) (map[string]struct{}, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, IgnoreRevsFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
+func loadIgnoreRevs(repoRoot string) (map[string]struct{}, error) {
+	lines, err := ignore.LoadFile(filepath.Join(repoRoot, ignoreRevsFile))
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", IgnoreRevsFile, err)
+		return nil, fmt.Errorf("reading %s: %w", ignoreRevsFile, err)
 	}
-	revs := make(map[string]struct{})
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || !isHexObjectName(line) {
+	var revs map[string]struct{}
+	for _, line := range lines {
+		if !isHexObjectName(line) {
 			continue
+		}
+		if revs == nil {
+			revs = make(map[string]struct{})
 		}
 		revs[strings.ToLower(line)] = struct{}{}
 	}
@@ -92,29 +82,46 @@ func extractPairs(commits []commitInfo, renames RenameMap, ig *ignore.Matcher, i
 	}
 	stats := make(map[[2]string]*pairStats)
 
+	// resolve memoizes rename resolution + ignore matching per unique raw
+	// path ("" = ignored): Match runs every ignore pattern's regexp, too
+	// costly to repeat per file occurrence per commit.
+	resolved := make(map[string]string)
+	resolve := func(raw string) string {
+		if r, ok := resolved[raw]; ok {
+			return r
+		}
+		r := renames.Resolve(raw)
+		if ig.Match(r) {
+			r = ""
+		}
+		resolved[raw] = r
+		return r
+	}
+
+	set := make(map[string]struct{})
+	var paths []string
 	for _, ci := range commits {
-		if _, skip := ignoreRevs[strings.ToLower(ci.SHA)]; skip {
+		// %H is lowercase hex, matching the loadIgnoreRevs set.
+		if _, skip := ignoreRevs[ci.SHA]; skip {
 			continue
 		}
-		set := make(map[string]struct{}, len(ci.Files))
+		clear(set)
 		for _, f := range ci.Files {
 			if f == "" {
 				continue
 			}
-			resolved := renames.Resolve(f)
-			if ig.Match(resolved) {
-				continue
+			if r := resolve(f); r != "" {
+				set[r] = struct{}{}
 			}
-			set[resolved] = struct{}{}
 		}
 		if len(set) < 2 {
 			continue
 		}
-		paths := make([]string, 0, len(set))
+		paths = paths[:0]
 		for p := range set {
 			paths = append(paths, p)
 		}
-		sort.Strings(paths)
+		sort.Strings(paths) // canonical A < B pair keys
 
 		w := DecayWeight(ci.Date, now, halfLifeDays)
 		for i := 0; i < len(paths); i++ {
@@ -135,11 +142,5 @@ func extractPairs(commits []commitInfo, renames RenameMap, ig *ignore.Matcher, i
 	for k, s := range stats {
 		pairs = append(pairs, CouplingPair{A: k[0], B: k[1], Support: s.support, WeightedSupport: s.weightedSupport})
 	}
-	sort.Slice(pairs, func(i, j int) bool {
-		if pairs[i].A != pairs[j].A {
-			return pairs[i].A < pairs[j].A
-		}
-		return pairs[i].B < pairs[j].B
-	})
 	return pairs
 }
