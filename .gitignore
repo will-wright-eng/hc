@@ -1,5 +1,5 @@
-# Binary
-hc
+# Binary (anchored: an unanchored `hc` also ignores the cmd/hc/ directory)
+/hc
 
 # Go
 *.exe

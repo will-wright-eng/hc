@@ -45,6 +45,8 @@ type AnalyzeOptions struct {
 	// computed across the full corpus — only the output rows shrink. Paths not
 	// found in the analyzed tree are silently dropped.
 	FilesFrom []string
+	// Coupling enables change-coupling pair extraction alongside churn.
+	Coupling bool
 	// Now is the reference time for time-sensitive analysis. Zero means time.Now().
 	Now time.Time
 }
@@ -63,6 +65,9 @@ type AnalyzeResult struct {
 	ChurnThreshold      float64
 	ComplexityThreshold int
 	MinAge              time.Duration
+	// Coupling is nil unless AnalyzeOptions.Coupling was set; empty (non-nil)
+	// when coupling ran but no pair survived the floors.
+	Coupling []analysis.CouplingScore
 }
 
 // Analyze runs the full analyze pipeline. Paths in the result are always
@@ -95,15 +100,27 @@ func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	patterns = append(patterns, opts.Excludes...)
 	ig := ignore.New(patterns)
 
-	churns, err := gitpkg.LogWithOptions(ctx, gitpkg.LogOptions{
+	logOpts := gitpkg.LogOptions{
 		RepoPath: repoRoot,
 		Since:    opts.Since,
 		Ignore:   ig,
 		Decay:    opts.Decay,
 		Now:      opts.Now,
-	})
-	if err != nil {
-		return AnalyzeResult{}, fmt.Errorf("reading git history: %w", err)
+	}
+	var churns []gitpkg.FileChurn
+	var pairs []gitpkg.CouplingPair
+	if opts.Coupling {
+		logRes, err := gitpkg.LogWithCoupling(ctx, logOpts)
+		if err != nil {
+			return AnalyzeResult{}, fmt.Errorf("reading git history: %w", err)
+		}
+		churns, pairs = logRes.Churn, logRes.Pairs
+	} else {
+		var err error
+		churns, err = gitpkg.LogWithOptions(ctx, logOpts)
+		if err != nil {
+			return AnalyzeResult{}, fmt.Errorf("reading git history: %w", err)
+		}
 	}
 
 	complexities, err := complexity.WalkWithOptions(repoRoot, complexity.Options{Ignore: ig})
@@ -118,12 +135,28 @@ func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	})
 	scores := res.Files
 
+	// Coupling scores against the full surviving corpus, before the projection
+	// filters below shrink (and mutate the backing array of) scores.
+	var coupling []analysis.CouplingScore
+	if opts.Coupling {
+		coupling = analysis.AnalyzeCoupling(pairs, res.Files)
+	}
+
 	if subtree != "" {
 		scores = filterToSubtree(scores, subtree)
+		prefix := subtree + "/"
+		coupling = filterCouplingOneSide(coupling, func(p string) bool {
+			return p == subtree || strings.HasPrefix(p, prefix)
+		})
 	}
 
 	if len(opts.FilesFrom) > 0 {
-		scores = filterToFiles(scores, normalizeFilesFrom(opts.FilesFrom, repoRoot))
+		want := normalizeFilesFrom(opts.FilesFrom, repoRoot)
+		scores = filterToFiles(scores, want)
+		coupling = filterCouplingOneSide(coupling, func(p string) bool {
+			_, ok := want[p]
+			return ok
+		})
 	}
 
 	return AnalyzeResult{
@@ -135,7 +168,24 @@ func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 		ChurnThreshold:      res.ChurnThreshold,
 		ComplexityThreshold: res.ComplexityThreshold,
 		MinAge:              minAge,
+		Coupling:            coupling,
 	}, nil
+}
+
+// filterCouplingOneSide keeps pairs with at least one side in the selection —
+// the partner is often outside it, which is the point (a changed file's
+// co-change partner not in the PR). Nil in, nil out.
+func filterCouplingOneSide(pairs []analysis.CouplingScore, in func(string) bool) []analysis.CouplingScore {
+	if pairs == nil {
+		return nil
+	}
+	out := pairs[:0]
+	for _, p := range pairs {
+		if in(p.A) || in(p.B) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // relSubtree computes the repo-root-relative form of absPath. Returns "" when

@@ -24,8 +24,9 @@ type FileChurn struct {
 	FirstSeen time.Time
 }
 
-// commitInfo holds the date and files for a single commit.
+// commitInfo holds the SHA, date, and files for a single commit.
 type commitInfo struct {
+	SHA   string
 	Date  time.Time
 	Files []string
 }
@@ -59,19 +60,30 @@ func Log(ctx context.Context, repoPath string, since string, ig *ignore.Matcher,
 // LogWithOptions runs git log and returns per-file churn data. ctx cancels the
 // underlying git invocations.
 func LogWithOptions(ctx context.Context, opts LogOptions) ([]FileChurn, error) {
-	commitFiles, err := gitLogFiles(ctx, opts.RepoPath, opts.Since)
+	res, err := logWithOptions(ctx, opts, false)
 	if err != nil {
 		return nil, err
+	}
+	return res.Churn, nil
+}
+
+// logWithOptions is the shared core behind LogWithOptions and LogWithCoupling.
+// When coupling is true, pair extraction runs as a second aggregation over the
+// same commit list.
+func logWithOptions(ctx context.Context, opts LogOptions, coupling bool) (LogResult, error) {
+	commitFiles, err := gitLogFiles(ctx, opts.RepoPath, opts.Since)
+	if err != nil {
+		return LogResult{}, err
 	}
 
 	authorMap, err := gitLogAuthors(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
-		return nil, err
+		return LogResult{}, err
 	}
 
 	renames, err := DetectRenames(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
-		return nil, fmt.Errorf("detecting renames: %w", err)
+		return LogResult{}, fmt.Errorf("detecting renames: %w", err)
 	}
 
 	type stats struct {
@@ -152,12 +164,21 @@ func LogWithOptions(ctx context.Context, opts LogOptions) ([]FileChurn, error) {
 			FirstSeen:       s.firstSeen,
 		})
 	}
-	return result, nil
+
+	res := LogResult{Churn: result}
+	if coupling {
+		ignoreRevs, err := LoadIgnoreRevs(opts.RepoPath)
+		if err != nil {
+			return LogResult{}, err
+		}
+		res.Pairs = extractPairs(commitFiles, renames, opts.Ignore, ignoreRevs, now, halfLifeDays)
+	}
+	return res, nil
 }
 
-// gitLogFiles returns commit info (date + files) for each commit.
+// gitLogFiles returns commit info (SHA + date + files) for each commit.
 func gitLogFiles(ctx context.Context, repoPath string, since string) ([]commitInfo, error) {
-	args := []string{"log", "--format=format:__DATE__%cI", "--name-only"}
+	args := []string{"log", "--format=format:__DATE__%cI %H", "--name-only"}
 	if since != "" {
 		args = append(args, "--since="+since)
 	}
@@ -190,11 +211,12 @@ func gitLogFiles(ctx context.Context, repoPath string, since string) ([]commitIn
 				commits = append(commits, current)
 				current = commitInfo{}
 			}
-			dateStr := line[len("__DATE__"):]
+			dateStr, sha, _ := strings.Cut(line[len("__DATE__"):], " ")
 			t, err := time.Parse(time.RFC3339, dateStr)
 			if err == nil {
 				current.Date = t
 			}
+			current.SHA = sha
 			hasDate = true
 			continue
 		}

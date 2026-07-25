@@ -1,6 +1,6 @@
 ---
 type: design
-status: proposed
+status: shipped
 created: 2026-07-13
 ---
 
@@ -36,7 +36,7 @@ aggregation over the same pass — no new git invocation.
 | CLI surface | `--coupling` flag on `analyze` only; no `hc coupling` command |
 | Metric | Support (co-change count) + asymmetric confidence in both directions |
 | Recency | Decay-weighted, same half-life as churn; `--no-decay` applies uniformly |
-| Co-change unit | Same commit; commits touching > 50 files skipped (`--max-commit-files`) |
+| Co-change unit | Same commit; commits listed in `.git-blame-ignore-revs` skipped |
 | Noise floors | Fixed defaults, no override flags |
 | Scope | `--files-from` projection; `.hcignore`/`--exclude` apply |
 | CI surface | `hc annotate` partner annotations only |
@@ -78,12 +78,16 @@ then lexicographically by path.
 
 ### Noise control
 
-- **Commit size cap:** commits touching more than `--max-commit-files` files
-  (default **50**) are skipped for pair extraction — a mass rename or
+- **Ignored revisions:** commits listed in `.git-blame-ignore-revs` at the
+  repo root are skipped for pair extraction — a mass rename or
   format-everything commit would otherwise couple every file to every other
-  file. The cap applies **only** to coupling; churn counting is unchanged.
-  This is the one new tunable; it earns a flag because repo commit styles
-  genuinely differ (squash-merge monorepos vs. atomic commits).
+  file. This reuses the standard structure git and GitHub already honor for
+  `git blame` (one full commit SHA per line, `#` comments) instead of
+  handrolling a size heuristic; repos that maintain the file for blame get
+  coupling noise control for free. Missing file means no commits are skipped;
+  unparseable lines are ignored. The exclusion applies **only** to coupling;
+  churn counting is unchanged. A commit-size cap (`--max-commit-files`) was
+  considered and deferred — see Non-goals.
 - **Fixed floors, no flags:** a pair enters the envelope only when raw
   `support >= 5` **and** `max(confidence_a_b, confidence_b_a) >= 0.5`. The
   floor uses *raw* support (stable and explainable) while ranking uses
@@ -109,7 +113,7 @@ shrinks what is emitted.
 
 ```json
 {
-  "options": { "coupling": true, "max_commit_files": 50 },
+  "options": { "coupling": true },
   "coupling": {
     "min_support": 5,
     "min_confidence": 0.5,
@@ -161,12 +165,13 @@ contains a `coupling` section:
 
 ### `internal/git`
 
-- `LogOptions` gains `Coupling bool` and `MaxCommitFiles int` (0 → default 50).
+- The log parse gains the commit SHA (`%H`) so commits can be matched against
+  `.git-blame-ignore-revs`, loaded from the repo root when coupling is on.
 - Pair aggregation runs inside the existing `LogWithOptions` pass over
-  `commitFiles`: resolve each file through `RenameMap`, drop ignored paths and
-  self-pairs, then count each unordered pair once per qualifying commit
-  (`map[[2]string]*pairStats`). Bounded at ≤ C(50,2) = 1225 pairs per commit;
-  floor pruning happens after aggregation.
+  `commitFiles`: skip ignored revisions, resolve each file through
+  `RenameMap`, drop ignored paths and self-pairs, then count each unordered
+  pair once per qualifying commit (`map[[2]string]*pairStats`). Floor pruning
+  happens after aggregation.
 - Return shape: a new `LogResult{Churn []FileChurn, Pairs []CouplingPair}`
   from a `LogWithCoupling` variant (or an extra return — decide at
   implementation), keeping `LogWithOptions`'s signature for existing callers.
@@ -194,8 +199,7 @@ contains a `coupling` section:
 
 ### `cmd/hc/main.go` / Makefile / workflow
 
-- `analyzeFlags()` gains `--coupling` and `--max-commit-files` (shared by the
-  root command sugar).
+- `analyzeFlags()` gains `--coupling` (shared by the root command sugar).
 - `pr-hotspots-json` becomes
   `hc analyze --json --coupling --files-from changed.txt ../hc-base`.
 - `pr-annotations.yml` is otherwise unchanged — no new steps, tokens, or
@@ -211,6 +215,9 @@ contains a `coupling` section:
   on later without changing the envelope shape.
 - Threshold override flags (`--min-support`, `--min-confidence`) — fixed
   floors by decision; additive if needed.
+- A commit-size cap (`--max-commit-files`) — deferred in favor of
+  `.git-blame-ignore-revs`. If unlisted mass commits prove noisy in practice,
+  a cap can return as an additive flag.
 - Hotspot-involving pair filters and cross-directory/distance signals —
   future refinements to ranking, not core extraction.
 
@@ -226,22 +233,28 @@ contains a `coupling` section:
   changed the code, not its test"); for future report surfaces it may need a
   same-stem or same-dir de-emphasis. `.hcignore` is the existing escape
   hatch.
+- **Mass commits outside `.git-blame-ignore-revs`:** a format-everything
+  commit that nobody listed couples every file it touches to every other.
+  The mitigation is the same as for blame noise — add the SHA to the file —
+  but repos that don't maintain one get no protection. The confidence floor
+  softens the blast (a one-off mass commit rarely reaches 50% confidence);
+  revisit the deferred size cap if this bites.
 - **Fixed floors misfit some repos:** squash-merge histories inflate
   co-change counts; sparse histories may never reach support 5 inside a
   narrow `--since` window. No escape hatch by design — revisit with data.
 - **Window sensitivity:** like churn and `FirstSeen`, coupling is bounded by
   `--since`; confidence denominators shrink with the window. Same caveat as
   the file age floor docs.
-- **Memory on monorepos:** the pair map is bounded by the commit-size cap and
-  post-aggregation pruning; a pathological history (many distinct ≤50-file
-  commits) grows the map linearly with distinct pairs. Acceptable; measure
-  before optimizing.
+- **Memory on monorepos:** the pair map grows with distinct co-changed pairs
+  (quadratic in the file count of the largest unlisted commit) and is pruned
+  only after aggregation. Acceptable; measure before optimizing.
 
 ## Test coverage to add
 
 - Pair extraction: same-commit counting, rename resolution merging pair keys,
-  self-pair drop, ignored-path drop, commit-size cap boundary (50 vs 51
-  files).
+  self-pair drop, ignored-path drop; `.git-blame-ignore-revs` commits skipped
+  for pairs but still counted for churn; missing file and comment/blank/
+  malformed lines tolerated.
 - Metric math: weighted support under decay, confidence asymmetry, `--no-decay`
   ⇒ weighted == raw; floor filtering on raw support and max confidence.
 - Universe consistency: age-floored and deleted files absent from pairs;

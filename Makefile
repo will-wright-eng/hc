@@ -42,10 +42,10 @@ pr-changed-files: ## write changed.txt + anchors.txt for BASE_SHA...HEAD_SHA
 		> "$(ANCHORS_TXT)"
 
 pr-hotspots-json: ## write hotspots.json by analyzing ../hc-base restricted to changed.txt
-	$(REPO_ROOT)/hc analyze --json --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
+	$(REPO_ROOT)/hc analyze --json --coupling --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
 
 pr-hotspots-json-no-min-age: ## like pr-hotspots-json but disables the 14-day file age floor (for manual reruns)
-	$(REPO_ROOT)/hc analyze --json --no-min-age --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
+	$(REPO_ROOT)/hc analyze --json --coupling --no-min-age --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
 
 pr-annotations: ## emit GitHub Actions annotations for changed hotspot files
 	$(REPO_ROOT)/hc annotate --input "$(HOTSPOTS_JSON)" --anchor-lines "$(ANCHORS_TXT)"

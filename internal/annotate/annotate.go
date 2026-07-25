@@ -120,7 +120,63 @@ func Render(r io.Reader, w io.Writer, opts Options) error {
 			return err
 		}
 	}
+
+	// Partner notices come after hotspot annotations — hotspot warnings matter
+	// more under GitHub's per-level display caps. Envelopes without a coupling
+	// section behave exactly as before this feature existed.
+	if env.Coupling != nil {
+		return renderPartnerNotices(w, env, opts)
+	}
 	return nil
+}
+
+// partnerTitle is the annotation title for a missing co-change partner.
+const partnerTitle = "hc: Frequent co-change partner not in this PR"
+
+// renderPartnerNotices emits one ::notice per coupling pair with exactly one
+// side in the changed set, anchored on the changed side and naming the absent
+// partner with the changed-side→partner confidence. Both sides changed means
+// the co-change happened — silence. Always notice level: coupling can be
+// stale and splits can be intentional; a nudge, not an alarm.
+func renderPartnerNotices(w io.Writer, env schema.Envelope, opts Options) error {
+	changed := changedSet(opts.AnchorLines, env.Files)
+	for _, p := range env.Coupling.Pairs {
+		inA, inB := changed[p.A], changed[p.B]
+		if inA == inB {
+			continue
+		}
+		src, partner, conf := p.A, p.B, p.ConfidenceAB
+		if inB {
+			src, partner, conf = p.B, p.A, p.ConfidenceBA
+		}
+		line := max(opts.AnchorLines[src], 1)
+		message := fmt.Sprintf(
+			"%s changes together with %s in %.0f%% of its commits (%d co-changes), but this PR does not touch %s. Check whether it needs a matching change.",
+			src, partner, conf*100, p.Support, partner)
+		if _, err := fmt.Fprintf(w, "::notice file=%s,line=%d,title=%s::%s\n",
+			escapeProperty(src), line, escapeProperty(partnerTitle), escapeData(message)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// changedSet identifies "files this PR touches": the anchor-lines keys when
+// provided (anchors.txt lists every changed file), else the envelope's file
+// paths (which the PR pipeline projection-filters to the changed set).
+func changedSet(anchors map[string]int, files []schema.File) map[string]bool {
+	if len(anchors) > 0 {
+		set := make(map[string]bool, len(anchors))
+		for p := range anchors {
+			set[p] = true
+		}
+		return set
+	}
+	set := make(map[string]bool, len(files))
+	for _, f := range files {
+		set[f.Path] = true
+	}
+	return set
 }
 
 func quadrantSet(in []string) map[string]bool {
