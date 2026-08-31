@@ -67,6 +67,29 @@ func BuildFiles(scores []analysis.FileScore, decay bool) []schema.File {
 	return files
 }
 
+// BuildCoupling converts coupling scores into the schema section, echoing the
+// fixed floors so consumers can render honest wording without hardcoding them.
+// The section is emitted (with empty pairs) whenever coupling ran, so
+// consumers can distinguish "no pairs survived" from "coupling did not run".
+func BuildCoupling(scores []analysis.CouplingScore) *schema.Coupling {
+	pairs := make([]schema.CouplingPair, len(scores))
+	for i, s := range scores {
+		pairs[i] = schema.CouplingPair{
+			A:               s.A,
+			B:               s.B,
+			Support:         s.Support,
+			WeightedSupport: s.WeightedSupport,
+			ConfidenceAB:    s.ConfidenceAB,
+			ConfidenceBA:    s.ConfidenceBA,
+		}
+	}
+	return &schema.Coupling{
+		MinSupport:    analysis.CouplingMinSupport,
+		MinConfidence: analysis.CouplingMinConfidence,
+		Pairs:         pairs,
+	}
+}
+
 func formatFilesTable(w io.Writer, scores []analysis.FileScore, decay bool) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	if decay {

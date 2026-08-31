@@ -137,3 +137,128 @@ func TestRender_RejectsBareArray(t *testing.T) {
 		t.Error("expected an error for a bare JSON array")
 	}
 }
+
+const couplingEnvelope = `{
+  "schema_version": "1",
+  "options": {"decay": true, "coupling": true},
+  "thresholds": {"churn": 5, "complexity": 130},
+  "files": [
+    {"path":"internal/git/git.go","commits":15,"weighted_commits":9.1,"lines":300,"complexity":400,"authors":3,"quadrant":"cold-simple"}
+  ],
+  "coupling": {
+    "min_support": 5,
+    "min_confidence": 0.5,
+    "pairs": [
+      {"a":"internal/git/git.go","b":"internal/git/git_test.go","support":12,"weighted_support":7.3,"confidence_a_b":0.8,"confidence_b_a":0.6}
+    ]
+  }
+}`
+
+func TestRender_PartnerNoticeGolden(t *testing.T) {
+	lines := annotationLines(t, couplingEnvelope, Options{
+		AnchorLines: map[string]int{"internal/git/git.go": 12},
+	})
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 partner notice, got %d: %v", len(lines), lines)
+	}
+	// "80%" is emitted as "80%25" — '%' must be escaped in workflow-command
+	// data; GitHub renders it back as '%'.
+	want := "::notice file=internal/git/git.go,line=12,title=hc%3A Frequent co-change partner not in this PR::internal/git/git.go changes together with internal/git/git_test.go in 80%25 of its commits (12 co-changes), but this PR does not touch internal/git/git_test.go. Check whether it needs a matching change."
+	if lines[0] != want {
+		t.Errorf("partner notice mismatch:\n got: %s\nwant: %s", lines[0], want)
+	}
+}
+
+func TestRender_PartnerNoticeDirection(t *testing.T) {
+	// The other side changed: anchor on git_test.go, use confidence_b_a (0.6).
+	lines := annotationLines(t, couplingEnvelope, Options{
+		AnchorLines: map[string]int{"internal/git/git_test.go": 7},
+	})
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 partner notice, got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "file=internal/git/git_test.go,line=7,") {
+		t.Errorf("notice should anchor on the changed side: %q", lines[0])
+	}
+	if !strings.Contains(lines[0], "in 60%25 of its commits") {
+		t.Errorf("notice should use the changed-side confidence (0.6): %q", lines[0])
+	}
+	if !strings.Contains(lines[0], "does not touch internal/git/git.go.") {
+		t.Errorf("notice should name the absent partner: %q", lines[0])
+	}
+}
+
+func TestRender_PartnerNoticeBothSidesChangedIsSilent(t *testing.T) {
+	lines := annotationLines(t, couplingEnvelope, Options{
+		AnchorLines: map[string]int{"internal/git/git.go": 3, "internal/git/git_test.go": 9},
+	})
+	if len(lines) != 0 {
+		t.Errorf("both sides changed should emit nothing, got %v", lines)
+	}
+}
+
+func TestRender_PartnerNoticeFallsBackToEnvelopeFiles(t *testing.T) {
+	// No anchor lines: the changed set is the envelope's files (git.go only),
+	// and the anchor falls back to line 1.
+	lines := annotationLines(t, couplingEnvelope, Options{})
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 partner notice, got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "file=internal/git/git.go,line=1,") {
+		t.Errorf("expected fallback anchor on git.go line 1: %q", lines[0])
+	}
+}
+
+func TestRender_PartnerNoticeAfterHotspots(t *testing.T) {
+	in := `{
+	  "schema_version": "1",
+	  "options": {"decay": true, "coupling": true},
+	  "thresholds": {"churn": 5, "complexity": 130},
+	  "files": [
+	    {"path":"hot.go","commits":12,"weighted_commits":9.1,"lines":200,"complexity":250,"authors":3,"quadrant":"hot-critical"}
+	  ],
+	  "coupling": {"min_support":5,"min_confidence":0.5,"pairs":[
+	    {"a":"hot.go","b":"hot_test.go","support":6,"weighted_support":4.0,"confidence_a_b":0.7,"confidence_b_a":0.9}
+	  ]}
+	}`
+	lines := annotationLines(t, in, Options{AnchorLines: map[string]int{"hot.go": 5}})
+	if len(lines) != 2 {
+		t.Fatalf("expected hotspot warning + partner notice, got %d: %v", len(lines), lines)
+	}
+	if !strings.HasPrefix(lines[0], "::warning ") || !strings.Contains(lines[0], "Hot/Critical") {
+		t.Errorf("hotspot warning should come first: %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "::notice ") || !strings.Contains(lines[1], "co-change") {
+		t.Errorf("partner notice should come second: %q", lines[1])
+	}
+}
+
+func TestRender_PartnerNoticeEscaping(t *testing.T) {
+	in := `{
+	  "schema_version": "1",
+	  "options": {"decay": false, "coupling": true},
+	  "thresholds": {"churn": 0, "complexity": 0},
+	  "files": [{"path":"a.go","commits":9,"complexity":10,"authors":1,"quadrant":"cold-simple"}],
+	  "coupling": {"min_support":5,"min_confidence":0.5,"pairs":[
+	    {"a":"a.go","b":"weird,name:v%1.go","support":6,"weighted_support":6,"confidence_a_b":0.7,"confidence_b_a":0.7}
+	  ]}
+	}`
+	lines := annotationLines(t, in, Options{})
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 partner notice, got %d: %v", len(lines), lines)
+	}
+	// Partner path appears only in the message: '%' escaped, ':' and ',' kept.
+	if !strings.Contains(lines[0], "changes together with weird,name:v%251.go in 70%") {
+		t.Errorf("partner path escaping wrong: %q", lines[0])
+	}
+}
+
+func TestRender_NoCouplingSectionUnchanged(t *testing.T) {
+	// Same envelope minus the coupling section: output must be byte-identical
+	// to the pre-coupling behavior (no partner notices at all).
+	for _, ln := range annotationLines(t, sampleAnalyzeJSON, Options{}) {
+		if strings.Contains(ln, "co-change") {
+			t.Errorf("envelope without coupling section must not emit partner notices: %q", ln)
+		}
+	}
+}

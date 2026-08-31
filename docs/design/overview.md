@@ -20,6 +20,7 @@ hc analyze --exclude '<glob>'         # repeatable; .hcignore file also honored
 hc analyze --no-decay                 # raw commit counts (decay on by default)
 hc analyze --no-min-age               # disable the 14-day file age floor
 hc analyze --files-from FILE|-        # restrict output to listed paths (PR projection)
+hc analyze --no-coupling              # omit change coupling pairs from the JSON envelope (on by default)
 
 hc md report [--input FILE] [--output FILE | --upsert FILE] [--collapsible]
 hc md ignore                          # emit LLM prompt for .hcignore generation
@@ -162,6 +163,16 @@ sort by quadrant priority (HotCritical first), then by weighted commits
 - Auto-disables when `--since` is 30 days or less
 - Override with `--no-min-age`
 
+### Change Coupling (`--no-coupling` to opt out)
+
+- Second aggregation over the same `git log` pass, on by default for JSON output: unordered file pairs that change in the same commit
+- Per pair: raw support, decay-weighted support (same half-life as churn), and asymmetric confidences (weighted co-changes ÷ each side's weighted churn)
+- Fixed noise floors — raw support ≥ 5 and max directional confidence ≥ 0.5 — a deliberate departure from median-split (pair frequencies are power-law distributed)
+- Commits listed in `.git-blame-ignore-revs` at the repo root are skipped for pair extraction (churn is unaffected) — the standard structure git/GitHub honor for blame noise
+- Emitted only in the JSON envelope (`coupling` section, additive to schema v1); table/csv never compute or render it, so `--no-coupling` is a no-op there
+- `hc annotate` consumes the section to emit "missing co-change partner" notices when a PR touches exactly one side of a pair
+- See [proposals/012-change-coupling.md](../proposals/012-change-coupling.md)
+
 ---
 
 ## Output Formats
@@ -210,7 +221,7 @@ Standard CSV with headers matching the table columns.
 
 | # | Goal | Status |
 | --- | --- | --- |
-| 1 | Change coupling analysis (`hc coupling`) | Not shipped |
+| 1 | Change coupling analysis | **Shipped** in the `hc analyze --json` envelope by default (`--no-coupling` opts out) + `hc annotate` partner notices (proposal 012) |
 | 2 | Renamed/moved file tracking | **Shipped** (`internal/git/rename.go`) |
 | 3 | Complexity beyond LOC | **Shipped** as indent-sum default; cyclomatic still open (proposal 001) |
 | 4 | Weighted recency (exponential decay) | **Shipped** (default; `--no-decay` to disable) |

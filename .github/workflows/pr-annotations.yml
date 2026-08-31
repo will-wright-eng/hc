@@ -31,12 +31,16 @@ jobs:
       - name: Determine changed files and diff anchors
         run: make pr-changed-files
 
-      - name: Analyze base branch (restricted to changed files)
+      - name: Analyze base branch (changed files + change coupling)
         run: make pr-hotspots-json
 
       # Workflow-command annotations are emitted to stdout and picked up by the
       # runner — no token, no API, no pull-requests permission. Annotations on a
       # changed file's first changed line render inline on the "Files changed"
-      # tab; the rest appear in the Checks tab.
-      - name: Annotate changed hotspot files
+      # tab; the rest appear in the Checks tab. Two kinds are emitted: hotspot
+      # warnings/notices for changed hot-critical / cold-complex files, and
+      # ::notice "missing co-change partner" nudges when the PR touches exactly
+      # one side of a frequently co-changed file pair (change coupling is part of
+      # every JSON envelope unless analyze runs with --no-coupling).
+      - name: Annotate changed hotspot files and missing co-change partners
         run: make pr-annotations

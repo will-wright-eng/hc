@@ -21,6 +21,9 @@ type Envelope struct {
 	Options       Options    `json:"options"`
 	Thresholds    Thresholds `json:"thresholds"`
 	Files         []File     `json:"files"`
+	// Coupling is present for JSON runs unless analyze ran with --no-coupling.
+	// Consumers treat a missing section as "coupling did not run".
+	Coupling *Coupling `json:"coupling,omitempty"`
 }
 
 // Options snapshots the analyze inputs that affected the result. Empty
@@ -30,6 +33,28 @@ type Options struct {
 	Decay    bool     `json:"decay"`
 	MinAge   string   `json:"min_age,omitempty"`
 	Excludes []string `json:"excludes,omitempty"`
+	Coupling bool     `json:"coupling,omitempty"`
+}
+
+// Coupling is the change-coupling section: file pairs that repeatedly change
+// in the same commit. The noise floors are echoed so consumers can render
+// honest wording without hardcoding them.
+type Coupling struct {
+	MinSupport    int            `json:"min_support"`
+	MinConfidence float64        `json:"min_confidence"`
+	Pairs         []CouplingPair `json:"pairs"`
+}
+
+// CouplingPair is one co-change pair (a < b lexicographically). Confidences
+// are asymmetric: confidence_a_b is "when a changes, b changes this fraction
+// of the time".
+type CouplingPair struct {
+	A               string  `json:"a"`
+	B               string  `json:"b"`
+	Support         int     `json:"support"`
+	WeightedSupport float64 `json:"weighted_support"`
+	ConfidenceAB    float64 `json:"confidence_a_b"`
+	ConfidenceBA    float64 `json:"confidence_b_a"`
 }
 
 // Thresholds are the median-split values used to classify files into quadrants.

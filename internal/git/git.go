@@ -24,8 +24,9 @@ type FileChurn struct {
 	FirstSeen time.Time
 }
 
-// commitInfo holds the date and files for a single commit.
+// commitInfo holds the SHA, date, and files for a single commit.
 type commitInfo struct {
+	SHA   string
 	Date  time.Time
 	Files []string
 }
@@ -42,36 +43,41 @@ type LogOptions struct {
 	Decay bool
 	// Now is the reference time for decay weighting. Zero means time.Now().
 	Now time.Time
+	// Coupling enables change-coupling pair extraction over the same log pass.
+	Coupling bool
 }
 
 // Log runs git log and returns per-file churn data.
 // repoPath is the root of the git repository.
 // since is an optional time window (e.g. "6 months") passed to --since.
 func Log(ctx context.Context, repoPath string, since string, ig *ignore.Matcher, decay bool) ([]FileChurn, error) {
-	return LogWithOptions(ctx, LogOptions{
+	res, err := LogWithOptions(ctx, LogOptions{
 		RepoPath: repoPath,
 		Since:    since,
 		Ignore:   ig,
 		Decay:    decay,
 	})
+	return res.Churn, err
 }
 
-// LogWithOptions runs git log and returns per-file churn data. ctx cancels the
-// underlying git invocations.
-func LogWithOptions(ctx context.Context, opts LogOptions) ([]FileChurn, error) {
+// LogWithOptions runs git log and returns per-file churn data, plus change
+// coupling pairs when opts.Coupling is set — a second aggregation over the
+// same commit list, no extra git invocation. ctx cancels the underlying git
+// invocations.
+func LogWithOptions(ctx context.Context, opts LogOptions) (LogResult, error) {
 	commitFiles, err := gitLogFiles(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
-		return nil, err
+		return LogResult{}, err
 	}
 
 	authorMap, err := gitLogAuthors(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
-		return nil, err
+		return LogResult{}, err
 	}
 
 	renames, err := DetectRenames(ctx, opts.RepoPath, opts.Since)
 	if err != nil {
-		return nil, fmt.Errorf("detecting renames: %w", err)
+		return LogResult{}, fmt.Errorf("detecting renames: %w", err)
 	}
 
 	type stats struct {
@@ -152,12 +158,21 @@ func LogWithOptions(ctx context.Context, opts LogOptions) ([]FileChurn, error) {
 			FirstSeen:       s.firstSeen,
 		})
 	}
-	return result, nil
+
+	res := LogResult{Churn: result}
+	if opts.Coupling {
+		ignoreRevs, err := loadIgnoreRevs(opts.RepoPath)
+		if err != nil {
+			return LogResult{}, err
+		}
+		res.Pairs = extractPairs(commitFiles, renames, opts.Ignore, ignoreRevs, now, halfLifeDays)
+	}
+	return res, nil
 }
 
-// gitLogFiles returns commit info (date + files) for each commit.
+// gitLogFiles returns commit info (SHA + date + files) for each commit.
 func gitLogFiles(ctx context.Context, repoPath string, since string) ([]commitInfo, error) {
-	args := []string{"log", "--format=format:__DATE__%cI", "--name-only"}
+	args := []string{"log", "--format=format:__DATE__%cI %H", "--name-only"}
 	if since != "" {
 		args = append(args, "--since="+since)
 	}
@@ -190,11 +205,12 @@ func gitLogFiles(ctx context.Context, repoPath string, since string) ([]commitIn
 				commits = append(commits, current)
 				current = commitInfo{}
 			}
-			dateStr := line[len("__DATE__"):]
+			dateStr, sha, _ := strings.Cut(line[len("__DATE__"):], " ")
 			t, err := time.Parse(time.RFC3339, dateStr)
 			if err == nil {
 				current.Date = t
 			}
+			current.SHA = sha
 			hasDate = true
 			continue
 		}

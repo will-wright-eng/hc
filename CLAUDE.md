@@ -41,7 +41,8 @@ cmd/hc/main.go          CLI entry (urfave/cli v3). Subcommands: analyze, md (rep
                         via analyzeFlags() helper, so bare `hc [flags] [path]` is sugar
                         for `hc analyze ...`.
 internal/git/            Parses git log → []FileChurn {Path, Commits, WeightedCommits, Authors, FirstSeen}
-                         Supports decay weighting (decay.go) and rename tracking (rename.go)
+                         Supports decay weighting (decay.go), rename tracking (rename.go), and
+                         change-coupling pair extraction (coupling.go, LogOptions.Coupling)
 internal/complexity/     Walks file tree, counts LOC or indentation depth → []FileComplexity {Path, Lines}
 internal/analysis/       Merges on path, median-split thresholds, classifies → []FileScore
 internal/output/         Formats results as table/JSON/CSV (LINES + COMPLEXITY columns;
@@ -65,6 +66,7 @@ internal/annotate/       Renders the analyze envelope as GitHub Actions workflow
 - **Exclude patterns** (`--exclude/-e`): repeatable flag, plus `.hcignore` file support.
 - **Report writes**: `hc md report --output FILE` overwrites; `--upsert FILE` injects between marker comments and preserves surrounding content. The two flags are mutually exclusive.
 - **PR annotations** (`hc annotate`): consumes `hc analyze --json` and emits GitHub Actions workflow-command annotations for changed hotspot files (`::warning` for hot-critical, `::notice` for cold-complex). Defaults to the `hot-critical`+`cold-complex` set, widenable with `--quadrant`. Emitted to stdout and picked up by the runner — no token/permission. Used by `pr-annotations.yml` via `make pr-annotations`. Annotations render inline on the PR "Files changed" tab only when anchored to a changed line; `--anchor-lines` (a `path<TAB>line` TSV from `make pr-changed-files`) supplies that anchor, otherwise it falls back to line 1 (Checks-tab only). See `docs/proposals/010-pr-hotspot-annotations.md`.
+- **Change coupling** (`--no-coupling` to opt out): on by default for JSON output, the `coupling` envelope section lists same-commit file pairs — raw support, decay-weighted support, asymmetric confidences. Fixed floors (support ≥ 5, max confidence ≥ 0.5; a documented departure from median-split). Commits listed in `.git-blame-ignore-revs` at the repo root are skipped for pair extraction (churn unaffected). Table/csv never compute coupling (`--no-coupling` is a no-op there). `hc annotate` emits "missing co-change partner" `::notice`s for pairs where the PR touches exactly one side. See `docs/proposals/012-change-coupling.md`.
 - **Rename tracking**: merges churn stats across git renames so renamed files aren't split.
 - **File age floor**: files whose first commit is younger than 14 days are excluded from analysis output (the median-split is unfair to files that haven't had time to accumulate churn). Auto-disables when `--since` is 30 days or less, with a one-line stderr note. Disable explicitly with `--no-min-age`. `FirstSeen` is bounded by the `--since` window — see `docs/proposals/015-file-age-floor.md` for the limitation and the planned Phase 2 fix.
 - Only dependency beyond stdlib is `github.com/urfave/cli/v3`.

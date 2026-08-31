@@ -113,10 +113,63 @@ func Render(r io.Reader, w io.Writer, opts Options) error {
 
 	for _, f := range kept {
 		rl := rules[f.Quadrant]
-		line := max(opts.AnchorLines[f.Path], 1)
 		message := fmt.Sprintf("%s %s %s", f.Path, rl.lead, statsSuffix(f, env.Options.Decay))
-		if _, err := fmt.Fprintf(w, "::%s file=%s,line=%d,title=%s::%s\n",
-			rl.level, escapeProperty(f.Path), line, escapeProperty(rl.title), escapeData(message)); err != nil {
+		if err := emitAnnotation(w, rl.level, f.Path, opts.AnchorLines[f.Path], rl.title, message); err != nil {
+			return err
+		}
+	}
+
+	// Partner notices come after hotspot annotations — hotspot warnings matter
+	// more under GitHub's per-level display caps.
+	return renderPartnerNotices(w, env, opts)
+}
+
+// emitAnnotation writes one GitHub Actions workflow command, owning the wire
+// format, the property/data escaping, and the line-1 anchor fallback.
+func emitAnnotation(w io.Writer, level, file string, line int, title, message string) error {
+	_, err := fmt.Fprintf(w, "::%s file=%s,line=%d,title=%s::%s\n",
+		level, escapeProperty(file), max(line, 1), escapeProperty(title), escapeData(message))
+	return err
+}
+
+// partnerTitle is the annotation title for a missing co-change partner.
+const partnerTitle = "hc: Frequent co-change partner not in this PR"
+
+// renderPartnerNotices emits one ::notice per coupling pair with exactly one
+// side in the changed set, anchored on the changed side and naming the absent
+// partner with the changed-side→partner confidence. Both sides changed means
+// the co-change happened — silence. Always notice level: coupling can be
+// stale and splits can be intentional; a nudge, not an alarm. Envelopes
+// without a coupling section behave exactly as before this feature existed.
+func renderPartnerNotices(w io.Writer, env schema.Envelope, opts Options) error {
+	if env.Coupling == nil {
+		return nil
+	}
+	// "Files this PR touches" is anchor-map membership: anchors.txt lists
+	// every changed file when provided; otherwise fall back to the envelope's
+	// file paths (which the PR pipeline projection-filters to the changed
+	// set), anchoring at line 1 via emitAnnotation.
+	anchors := opts.AnchorLines
+	if len(anchors) == 0 {
+		anchors = make(map[string]int, len(env.Files))
+		for _, f := range env.Files {
+			anchors[f.Path] = 1
+		}
+	}
+	for _, p := range env.Coupling.Pairs {
+		_, inA := anchors[p.A]
+		_, inB := anchors[p.B]
+		if inA == inB {
+			continue
+		}
+		src, partner, conf := p.A, p.B, p.ConfidenceAB
+		if inB {
+			src, partner, conf = p.B, p.A, p.ConfidenceBA
+		}
+		message := fmt.Sprintf(
+			"%s changes together with %s in %.0f%% of its commits (%d co-changes), but this PR does not touch %s. Check whether it needs a matching change.",
+			src, partner, conf*100, p.Support, partner)
+		if err := emitAnnotation(w, "notice", src, anchors[src], partnerTitle, message); err != nil {
 			return err
 		}
 	}

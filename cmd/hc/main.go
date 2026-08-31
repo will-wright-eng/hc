@@ -77,6 +77,11 @@ func analyzeFlags(hidden bool) []cli.Flag {
 			Usage:  "Restrict output to paths listed in FILE (one per line; \"-\" reads stdin)",
 			Hidden: hidden,
 		},
+		&cli.BoolFlag{
+			Name:   "no-coupling",
+			Usage:  "Omit change coupling pairs from the JSON envelope (on by default for JSON output)",
+			Hidden: hidden,
+		},
 	}
 }
 
@@ -225,6 +230,10 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	if err := output.ValidateFormat(format); err != nil {
 		return err
 	}
+	// Coupling is on by default but only for JSON: pair-centric data has no
+	// rendering in the file-centric table/csv, so those formats skip the
+	// extraction entirely rather than pay for data they never show.
+	coupling := format == "json" && !cmd.Bool("no-coupling")
 
 	var filesFrom []string
 	if src := cmd.String("files-from"); src != "" {
@@ -241,6 +250,7 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		Decay:     !cmd.Bool("no-decay"),
 		NoMinAge:  cmd.Bool("no-min-age"),
 		FilesFrom: filesFrom,
+		Coupling:  coupling,
 	}
 
 	result, err := app.Analyze(ctx, opts)
@@ -264,7 +274,7 @@ func buildEnvelope(result app.AnalyzeResult, opts app.AnalyzeOptions) schema.Env
 	if result.MinAge > 0 {
 		minAge = result.MinAge.String()
 	}
-	return schema.Envelope{
+	env := schema.Envelope{
 		SchemaVersion: schema.SchemaVersion,
 		GeneratedAt:   time.Now().UTC(),
 		RepoRoot:      result.RepoRoot,
@@ -281,6 +291,13 @@ func buildEnvelope(result app.AnalyzeResult, opts app.AnalyzeOptions) schema.Env
 		},
 		Files: output.BuildFiles(result.Files, result.Decay),
 	}
+	// Non-nil (possibly empty) Coupling is the result's own "coupling ran"
+	// signal — derive from it rather than re-reading the option.
+	if result.Coupling != nil {
+		env.Options.Coupling = true
+		env.Coupling = output.BuildCoupling(result.Coupling)
+	}
+	return env
 }
 
 // openJSONInput returns the reader for `-i FILE`, falling back to stdin with

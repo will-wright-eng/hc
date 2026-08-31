@@ -45,6 +45,8 @@ type AnalyzeOptions struct {
 	// computed across the full corpus — only the output rows shrink. Paths not
 	// found in the analyzed tree are silently dropped.
 	FilesFrom []string
+	// Coupling enables change-coupling pair extraction alongside churn.
+	Coupling bool
 	// Now is the reference time for time-sensitive analysis. Zero means time.Now().
 	Now time.Time
 }
@@ -63,6 +65,9 @@ type AnalyzeResult struct {
 	ChurnThreshold      float64
 	ComplexityThreshold int
 	MinAge              time.Duration
+	// Coupling is nil unless AnalyzeOptions.Coupling was set; empty (non-nil)
+	// when coupling ran but no pair survived the floors.
+	Coupling []analysis.CouplingScore
 }
 
 // Analyze runs the full analyze pipeline. Paths in the result are always
@@ -95,16 +100,18 @@ func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	patterns = append(patterns, opts.Excludes...)
 	ig := ignore.New(patterns)
 
-	churns, err := gitpkg.LogWithOptions(ctx, gitpkg.LogOptions{
+	logRes, err := gitpkg.LogWithOptions(ctx, gitpkg.LogOptions{
 		RepoPath: repoRoot,
 		Since:    opts.Since,
 		Ignore:   ig,
 		Decay:    opts.Decay,
 		Now:      opts.Now,
+		Coupling: opts.Coupling,
 	})
 	if err != nil {
 		return AnalyzeResult{}, fmt.Errorf("reading git history: %w", err)
 	}
+	churns := logRes.Churn
 
 	complexities, err := complexity.WalkWithOptions(repoRoot, complexity.Options{Ignore: ig})
 	if err != nil {
@@ -118,12 +125,27 @@ func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 	})
 	scores := res.Files
 
+	// Coupling scores against the full surviving corpus, before the projection
+	// filters below shrink (and mutate the backing array of) scores.
+	var coupling []analysis.CouplingScore
+	if opts.Coupling {
+		coupling = analysis.AnalyzeCoupling(logRes.Pairs, res.Files)
+	}
+
 	if subtree != "" {
 		scores = filterToSubtree(scores, subtree)
+		coupling = filterCouplingOneSide(coupling, func(p string) bool {
+			return inSubtree(p, subtree)
+		})
 	}
 
 	if len(opts.FilesFrom) > 0 {
-		scores = filterToFiles(scores, normalizeFilesFrom(opts.FilesFrom, repoRoot))
+		want := normalizeFilesFrom(opts.FilesFrom, repoRoot)
+		scores = filterToFiles(scores, want)
+		coupling = filterCouplingOneSide(coupling, func(p string) bool {
+			_, ok := want[p]
+			return ok
+		})
 	}
 
 	return AnalyzeResult{
@@ -135,7 +157,24 @@ func Analyze(ctx context.Context, opts AnalyzeOptions) (AnalyzeResult, error) {
 		ChurnThreshold:      res.ChurnThreshold,
 		ComplexityThreshold: res.ComplexityThreshold,
 		MinAge:              minAge,
+		Coupling:            coupling,
 	}, nil
+}
+
+// filterCouplingOneSide keeps pairs with at least one side in the selection —
+// the partner is often outside it, which is the point (a changed file's
+// co-change partner not in the PR). Nil in, nil out.
+func filterCouplingOneSide(pairs []analysis.CouplingScore, in func(string) bool) []analysis.CouplingScore {
+	if pairs == nil {
+		return nil
+	}
+	out := pairs[:0]
+	for _, p := range pairs {
+		if in(p.A) || in(p.B) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // relSubtree computes the repo-root-relative form of absPath. Returns "" when
@@ -195,13 +234,17 @@ func filterToFiles(scores []analysis.FileScore, want map[string]struct{}) []anal
 	return out
 }
 
-// filterToSubtree keeps scores whose path equals subtree or is nested under it.
-// Subtree must be a forward-slash, repo-root-relative path with no trailing slash.
+// inSubtree reports whether path equals subtree or is nested under it. Subtree
+// must be a forward-slash, repo-root-relative path with no trailing slash.
+func inSubtree(path, subtree string) bool {
+	return path == subtree || strings.HasPrefix(path, subtree+"/")
+}
+
+// filterToSubtree keeps scores whose path is in the subtree.
 func filterToSubtree(scores []analysis.FileScore, subtree string) []analysis.FileScore {
-	prefix := subtree + "/"
 	out := scores[:0]
 	for _, s := range scores {
-		if s.Path == subtree || strings.HasPrefix(s.Path, prefix) {
+		if inSubtree(s.Path, subtree) {
 			out = append(out, s)
 		}
 	}
