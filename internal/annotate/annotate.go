@@ -135,15 +135,24 @@ func emitAnnotation(w io.Writer, level, file string, line int, title, message st
 // partnerTitle is the annotation title for a missing co-change partner.
 const partnerTitle = "hc: Frequent co-change partner not in this PR"
 
-// renderPartnerNotices emits one ::notice per coupling pair with exactly one
-// side in the changed set, anchored on the changed side and naming the absent
-// partner with the changed-side→partner confidence. Both sides changed means
-// the co-change happened — silence. Always notice level: coupling can be
-// stale and splits can be intentional; a nudge, not an alarm. Envelopes
-// without a coupling section behave exactly as before this feature existed.
+// fallbackMinConfidence applies when the envelope's coupling section lacks
+// min_confidence (old JSON); the envelope value wins whenever present.
+const fallbackMinConfidence = 0.5
+
+// renderPartnerNotices emits one ::notice per changed file that couples to
+// partners absent from the PR. A partner survives only when the changed-side
+// confidence clears min_confidence: analysis keeps a pair on max(confAB,
+// confBA), so without this directional floor a notice could render the weak
+// direction of a pair that survived on its strong one. Both sides changed
+// means the co-change happened — silence. Always notice level: coupling can
+// be stale and splits can be intentional.
 func renderPartnerNotices(w io.Writer, env schema.Envelope, opts Options) error {
 	if env.Coupling == nil {
 		return nil
+	}
+	minConf := env.Coupling.MinConfidence
+	if minConf <= 0 {
+		minConf = fallbackMinConfidence
 	}
 	// "Files this PR touches" is anchor-map membership: anchors.txt lists
 	// every changed file when provided; otherwise fall back to the envelope's
@@ -156,19 +165,55 @@ func renderPartnerNotices(w io.Writer, env schema.Envelope, opts Options) error 
 			anchors[f.Path] = 1
 		}
 	}
+	type partner struct {
+		path    string
+		conf    float64
+		support int
+	}
+	bySrc := make(map[string][]partner)
 	for _, p := range env.Coupling.Pairs {
 		_, inA := anchors[p.A]
 		_, inB := anchors[p.B]
 		if inA == inB {
 			continue
 		}
-		src, partner, conf := p.A, p.B, p.ConfidenceAB
+		src, other, conf := p.A, p.B, p.ConfidenceAB
 		if inB {
-			src, partner, conf = p.B, p.A, p.ConfidenceBA
+			src, other, conf = p.B, p.A, p.ConfidenceBA
 		}
-		message := fmt.Sprintf(
-			"%s changes together with %s in %.0f%% of its commits (%d co-changes), but this PR does not touch %s. Check whether it needs a matching change.",
-			src, partner, conf*100, p.Support, partner)
+		if conf < minConf {
+			continue
+		}
+		bySrc[src] = append(bySrc[src], partner{path: other, conf: conf, support: p.Support})
+	}
+	srcs := make([]string, 0, len(bySrc))
+	for src := range bySrc {
+		srcs = append(srcs, src)
+	}
+	sort.Strings(srcs)
+	for _, src := range srcs {
+		partners := bySrc[src]
+		sort.Slice(partners, func(i, j int) bool {
+			if partners[i].conf != partners[j].conf {
+				return partners[i].conf > partners[j].conf
+			}
+			return partners[i].path < partners[j].path
+		})
+		var message string
+		if len(partners) == 1 {
+			p := partners[0]
+			message = fmt.Sprintf(
+				"%s frequently changes together with %s (%.0f%%, %d co-changes), but this PR does not touch it. Check whether it needs a matching change.",
+				src, p.path, p.conf*100, p.support)
+		} else {
+			entries := make([]string, len(partners))
+			for i, p := range partners {
+				entries[i] = fmt.Sprintf("%s (%.0f%%, %d co-changes)", p.path, p.conf*100, p.support)
+			}
+			message = fmt.Sprintf(
+				"%s frequently changes together with: %s, but this PR touches none of them. Check whether they need matching changes.",
+				src, strings.Join(entries, ", "))
+		}
 		if err := emitAnnotation(w, "notice", src, anchors[src], partnerTitle, message); err != nil {
 			return err
 		}

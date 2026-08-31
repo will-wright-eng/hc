@@ -13,7 +13,7 @@ commit — as an opt-in section of the `hc analyze --json` envelope, and teach
 `hc annotate` to emit a **missing co-change partner** annotation on PRs:
 
 ```text
-::notice file=internal/git/git.go,line=12,title=hc: Frequent co-change partner not in this PR::internal/git/git.go changes together with internal/git/git_test.go in 80% of its commits (12 co-changes), but this PR does not touch internal/git/git_test.go. Check whether it needs a matching change.
+::notice file=internal/git/git.go,line=12,title=hc: Frequent co-change partner not in this PR::internal/git/git.go frequently changes together with internal/git/git_test.go (80%, 12 co-changes), but this PR does not touch it. Check whether it needs a matching change.
 ```
 
 This closes stretch goal #1 from [design/overview.md](../design/overview.md)
@@ -150,11 +150,18 @@ contains a `coupling` section:
 - **Changed set:** the keys of `--anchor-lines` when provided (it already
   lists every changed file from `git diff`), else the envelope's `files`
   paths. Under projection both identify "files this PR touches".
-- For each pair with exactly **one** side in the changed set, emit a
+- For each **changed file** with at least one absent partner, emit a single
   `::notice` anchored on the changed side (its anchor line, else `line=1`),
-  naming the partner and the changed-side→partner confidence. Both sides
-  changed → silence (the co-change happened). Neither side changed → not in
-  the envelope anyway.
+  listing every surviving partner with its changed-side→partner confidence
+  and raw support, ordered by confidence descending then path; notices order
+  by changed-file path. A partner survives only when the changed-side→partner
+  confidence clears the envelope's `coupling.min_confidence` (fallback 0.5
+  when the field is absent or zero): the pair floor is the `max()` of both
+  directions, so without this directional check a notice could render the
+  weak side of a pair that survived on its strong one. Both sides changed →
+  silence (the co-change happened). Neither side changed → not in the
+  envelope anyway. (Grouping and the directional floor were added by the
+  2026-08-31 amendment; originally one notice per pair.)
 - **Level `notice`, always:** coupling can be stale and splits can be
   intentional; a nudge, not an alarm. Hotspot annotations keep their existing
   levels; the two kinds are independent, and a file can receive both.
@@ -226,9 +233,13 @@ contains a `coupling` section:
 
 - **Notice-cap crowding:** partner notices share the 10-per-level-per-step
   display cap with `cold-complex` hotspot notices. A large PR could push
-  partner notices out of the display (they remain in logs). If it bites,
-  split kinds across steps or promote strong-confidence partners to a
-  separate step — deferred until observed.
+  partner notices out of the display (they remain in logs). **Observed
+  2026-08** on a consumer monorepo: a single-file PR touching a high-degree
+  file stacked 11 per-pair notices at the same file/line, most rendering the
+  weak direction of pairs that survived on their strong one. **Mitigated** by
+  the 2026-08-31 amendment — grouping collapses this to one notice per
+  changed file and the directional floor drops weak-direction claims.
+  Splitting kinds across steps remains available if crowding returns.
 - **Test-file pairs dominate:** `x.go ↔ x_test.go` couples strongly and will
   top many rankings. For the partner annotation this is *signal* ("you
   changed the code, not its test"); for future report surfaces it may need a
@@ -278,6 +289,20 @@ contains a `coupling` section:
   annotation silently inert whenever the flag was forgotten. The envelope
   shape, floors, and `hc annotate` behavior are unchanged; the CI surface
   reads `hc analyze --json --files-from changed.txt` with no coupling flag.
+- **2026-08-31 — partner notices grouped and directionally floored
+  (render-time only).** Observed in real use: one notice per pair stacked N
+  identical-title notices on the same changed file/line, shared partners were
+  re-named once per changed file, and the rendered changed-side confidence
+  could sit far below the 50% pair floor (as low as 14%) because pairs enter
+  the envelope on `max(confidence_a_b, confidence_b_a)`. `hc annotate` now
+  (1) skips a partner when the changed-side→partner confidence is below the
+  envelope's `coupling.min_confidence` (fallback 0.5 for envelopes lacking
+  the field), and (2) emits one notice per changed file listing all surviving
+  partners — confidence descending then path within a notice, notices ordered
+  by changed-file path. Analysis and the envelope are unchanged: pairs still
+  enter on the `max()` floor so other consumers keep the full pair set.
+  Downstream consumers that mirror the notice wording verbatim must re-mirror
+  on their next version bump.
 
 ## References
 

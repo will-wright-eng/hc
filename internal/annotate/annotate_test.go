@@ -163,7 +163,7 @@ func TestRender_PartnerNoticeGolden(t *testing.T) {
 	}
 	// "80%" is emitted as "80%25" — '%' must be escaped in workflow-command
 	// data; GitHub renders it back as '%'.
-	want := "::notice file=internal/git/git.go,line=12,title=hc%3A Frequent co-change partner not in this PR::internal/git/git.go changes together with internal/git/git_test.go in 80%25 of its commits (12 co-changes), but this PR does not touch internal/git/git_test.go. Check whether it needs a matching change."
+	want := "::notice file=internal/git/git.go,line=12,title=hc%3A Frequent co-change partner not in this PR::internal/git/git.go frequently changes together with internal/git/git_test.go (80%25, 12 co-changes), but this PR does not touch it. Check whether it needs a matching change."
 	if lines[0] != want {
 		t.Errorf("partner notice mismatch:\n got: %s\nwant: %s", lines[0], want)
 	}
@@ -180,11 +180,8 @@ func TestRender_PartnerNoticeDirection(t *testing.T) {
 	if !strings.Contains(lines[0], "file=internal/git/git_test.go,line=7,") {
 		t.Errorf("notice should anchor on the changed side: %q", lines[0])
 	}
-	if !strings.Contains(lines[0], "in 60%25 of its commits") {
-		t.Errorf("notice should use the changed-side confidence (0.6): %q", lines[0])
-	}
-	if !strings.Contains(lines[0], "does not touch internal/git/git.go.") {
-		t.Errorf("notice should name the absent partner: %q", lines[0])
+	if !strings.Contains(lines[0], "with internal/git/git.go (60%25, 12 co-changes)") {
+		t.Errorf("notice should name the absent partner with the changed-side confidence (0.6): %q", lines[0])
 	}
 }
 
@@ -248,8 +245,78 @@ func TestRender_PartnerNoticeEscaping(t *testing.T) {
 		t.Fatalf("expected 1 partner notice, got %d: %v", len(lines), lines)
 	}
 	// Partner path appears only in the message: '%' escaped, ':' and ',' kept.
-	if !strings.Contains(lines[0], "changes together with weird,name:v%251.go in 70%") {
+	if !strings.Contains(lines[0], "changes together with weird,name:v%251.go (70%25, 6 co-changes)") {
 		t.Errorf("partner path escaping wrong: %q", lines[0])
+	}
+}
+
+func TestRender_PartnerNoticeDirectionalFloor(t *testing.T) {
+	// The pair survives analysis on max(0.9, 0.14) but the changed side's own
+	// direction is 0.14 — below the envelope's min_confidence, so no notice.
+	in := `{
+	  "schema_version": "1",
+	  "options": {"decay": true, "coupling": true},
+	  "thresholds": {"churn": 0, "complexity": 0},
+	  "files": [],
+	  "coupling": {"min_support":5,"min_confidence":0.5,"pairs":[
+	    {"a":"strong.go","b":"weak.go","support":6,"weighted_support":6,"confidence_a_b":0.9,"confidence_b_a":0.14}
+	  ]}
+	}`
+	if lines := annotationLines(t, in, Options{AnchorLines: map[string]int{"weak.go": 3}}); len(lines) != 0 {
+		t.Errorf("changed-side confidence 0.14 < 0.5 should emit nothing, got %v", lines)
+	}
+	lines := annotationLines(t, in, Options{AnchorLines: map[string]int{"strong.go": 3}})
+	if len(lines) != 1 || !strings.Contains(lines[0], "with weak.go (90%25, 6 co-changes)") {
+		t.Errorf("changed-side confidence 0.9 should emit one notice, got %v", lines)
+	}
+}
+
+func TestRender_PartnerNoticeGrouping(t *testing.T) {
+	// x.go couples to three absent partners → one notice listing all three,
+	// confidence desc then path (m.go and z.go tie at 0.56). a.go has a single
+	// absent partner → the one-partner wording. Notices order by src path.
+	in := `{
+	  "schema_version": "1",
+	  "options": {"decay": true, "coupling": true},
+	  "thresholds": {"churn": 0, "complexity": 0},
+	  "files": [],
+	  "coupling": {"min_support":5,"min_confidence":0.5,"pairs":[
+	    {"a":"x.go","b":"y.go","support":24,"weighted_support":15,"confidence_a_b":0.63,"confidence_b_a":0.9},
+	    {"a":"x.go","b":"z.go","support":20,"weighted_support":12,"confidence_a_b":0.56,"confidence_b_a":0.8},
+	    {"a":"m.go","b":"x.go","support":9,"weighted_support":6,"confidence_a_b":0.7,"confidence_b_a":0.56},
+	    {"a":"a.go","b":"n.go","support":7,"weighted_support":5,"confidence_a_b":0.66,"confidence_b_a":0.9}
+	  ]}
+	}`
+	lines := annotationLines(t, in, Options{AnchorLines: map[string]int{"x.go": 5, "a.go": 3}})
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 grouped notices, got %d: %v", len(lines), lines)
+	}
+	wantSingle := "::notice file=a.go,line=3,title=hc%3A Frequent co-change partner not in this PR::a.go frequently changes together with n.go (66%25, 7 co-changes), but this PR does not touch it. Check whether it needs a matching change."
+	if lines[0] != wantSingle {
+		t.Errorf("single-partner notice mismatch:\n got: %s\nwant: %s", lines[0], wantSingle)
+	}
+	wantMulti := "::notice file=x.go,line=5,title=hc%3A Frequent co-change partner not in this PR::x.go frequently changes together with: y.go (63%25, 24 co-changes), m.go (56%25, 9 co-changes), z.go (56%25, 20 co-changes), but this PR touches none of them. Check whether they need matching changes."
+	if lines[1] != wantMulti {
+		t.Errorf("multi-partner notice mismatch:\n got: %s\nwant: %s", lines[1], wantMulti)
+	}
+}
+
+func TestRender_PartnerNoticeMinConfidenceFallback(t *testing.T) {
+	// Old envelopes may lack coupling.min_confidence; the directional floor
+	// falls back to 0.5 rather than letting everything through.
+	in := `{
+	  "schema_version": "1",
+	  "options": {"decay": true, "coupling": true},
+	  "thresholds": {"churn": 0, "complexity": 0},
+	  "files": [],
+	  "coupling": {"min_support":5,"pairs":[
+	    {"a":"kept.go","b":"absent.go","support":6,"weighted_support":6,"confidence_a_b":0.6,"confidence_b_a":0.9},
+	    {"a":"dropped.go","b":"other.go","support":6,"weighted_support":6,"confidence_a_b":0.4,"confidence_b_a":0.9}
+	  ]}
+	}`
+	lines := annotationLines(t, in, Options{AnchorLines: map[string]int{"kept.go": 1, "dropped.go": 1}})
+	if len(lines) != 1 || !strings.Contains(lines[0], "file=kept.go,") {
+		t.Errorf("expected only kept.go (0.6 >= fallback 0.5), got %v", lines)
 	}
 }
 
