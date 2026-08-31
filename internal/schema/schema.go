@@ -21,8 +21,8 @@ type Envelope struct {
 	Options       Options    `json:"options"`
 	Thresholds    Thresholds `json:"thresholds"`
 	Files         []File     `json:"files"`
-	// Coupling is present only when analyze ran with --coupling. Consumers
-	// treat a missing section as "coupling did not run".
+	// Coupling is present for JSON runs unless analyze ran with --no-coupling.
+	// Consumers treat a missing section as "coupling did not run".
 	Coupling *Coupling `json:"coupling,omitempty"`
 }
 

@@ -33,19 +33,23 @@ lint: ## run linting
 e2e: ## run e2e tests with decay, indentation, and report
 	./hc analyze --json | ./hc md report
 
+# anchors.txt has a row for every changed.txt path: the first hunk line when
+# the diff has one, else 1 (binary and mode-only changes have no hunk). hc
+# annotate reads the anchor keys as "files this PR touches" for co-change
+# partner notices, so the list must be complete, not just anchored.
 pr-changed-files: ## write changed.txt + anchors.txt for BASE_SHA...HEAD_SHA
 	@test -n "$${BASE_SHA:-}" || (echo "BASE_SHA is required" >&2; exit 1)
 	@test -n "$${HEAD_SHA:-}" || (echo "HEAD_SHA is required" >&2; exit 1)
 	git diff --name-only --diff-filter=ACM "$${BASE_SHA}...$${HEAD_SHA}" -- > "$(CHANGED_TXT)"
 	git diff --unified=0 --diff-filter=ACM "$${BASE_SHA}...$${HEAD_SHA}" -- | \
-		awk '/^\+\+\+ b\//{f=substr($$0,7); sub(/[ \t]+$$/,"",f); seen=0; next} /^@@ /{if(!seen && f!=""){n=$$3; sub(/^\+/,"",n); sub(/,.*/,"",n); print f "\t" n; seen=1}}' \
+		awk 'FILENAME==ARGV[1]{order[++n]=$$0; next} /^\+\+\+ b\//{f=substr($$0,7); sub(/[ \t]+$$/,"",f); next} /^@@ /{if(f!="" && !(f in line)){s=$$3; sub(/^\+/,"",s); sub(/,.*/,"",s); line[f]=s}} END{for(i=1;i<=n;i++){p=order[i]; print p "\t" ((p in line)?line[p]:1)}}' "$(CHANGED_TXT)" - \
 		> "$(ANCHORS_TXT)"
 
 pr-hotspots-json: ## write hotspots.json by analyzing ../hc-base restricted to changed.txt
-	$(REPO_ROOT)/hc analyze --json --coupling --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
+	$(REPO_ROOT)/hc analyze --json --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
 
 pr-hotspots-json-no-min-age: ## like pr-hotspots-json but disables the 14-day file age floor (for manual reruns)
-	$(REPO_ROOT)/hc analyze --json --coupling --no-min-age --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
+	$(REPO_ROOT)/hc analyze --json --no-min-age --files-from "$(CHANGED_TXT)" ../hc-base > "$(HOTSPOTS_JSON)"
 
 pr-annotations: ## emit GitHub Actions annotations for changed hotspot files
 	$(REPO_ROOT)/hc annotate --input "$(HOTSPOTS_JSON)" --anchor-lines "$(ANCHORS_TXT)"

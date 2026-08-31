@@ -267,6 +267,18 @@ contains a `coupling` section:
   coupling ⇒ byte-identical output to today; escaping of `%`, `:`, `,`,
   newlines in partner paths.
 
+## Amendments
+
+- **2026-08-30 — default flipped to opt-out.** Coupling now runs by default
+  for JSON output and the flag is `--no-coupling`; `--coupling` no longer
+  exists. Table/csv never compute pairs (there is nothing to render), so the
+  "`--coupling` requires JSON" error from the Flag contract above is gone and
+  `--no-coupling` is a harmless no-op there. Rationale: the PR pipeline and
+  every JSON consumer want the section, and opt-in made the partner
+  annotation silently inert whenever the flag was forgotten. The envelope
+  shape, floors, and `hc annotate` behavior are unchanged; the CI surface
+  reads `hc analyze --json --files-from changed.txt` with no coupling flag.
+
 ## References
 
 - Tornhill, A. (2018). *Software Design X-Rays* — change coupling

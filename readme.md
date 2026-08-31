@@ -14,7 +14,7 @@ go install github.com/will-wright-eng/hc/cmd/hc@latest
 
 ### PR annotations
 
-[`.github/workflows/pr-annotations.yml`](.github/workflows/pr-annotations.yml) is a working example: on every PR it analyzes the base branch and annotates changed files that were already `hot-critical` (`::warning`) or `cold-complex` (`::notice`). The pipeline is three make targets:
+[`.github/workflows/pr-annotations.yml`](.github/workflows/pr-annotations.yml) is a working example: on every PR it analyzes the base branch and annotates changed files that were already `hot-critical` (`::warning`) or `cold-complex` (`::notice`), plus a `::notice` on any changed file whose frequent co-change partner is not in the PR. The pipeline is three make targets:
 
 ```yaml
 - run: make pr-changed-files   # changed.txt + anchors.txt (first changed line per file)
@@ -80,6 +80,7 @@ hc analyze --json | hc md report --upsert HOTSPOTS.md
 | `--no-decay` |  | Disable recency weighting (use raw commit counts) |
 | `--no-min-age` |  | Disable the 14-day file age floor |
 | `--files-from` |  | Restrict output to paths listed in FILE (one per line; `-` reads stdin). Thresholds are still computed on the full corpus — only the rows shrink. |
+| `--no-coupling` |  | Omit change coupling pairs from the JSON envelope. Coupling (same-commit co-changes with support ≥ 5 and confidence ≥ 0.5) is computed by default for JSON output; table/csv never compute it. Under `--files-from`, pairs with at least one listed side are kept. |
 
 #### File age floor
 

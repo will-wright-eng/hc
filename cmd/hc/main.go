@@ -78,8 +78,8 @@ func analyzeFlags(hidden bool) []cli.Flag {
 			Hidden: hidden,
 		},
 		&cli.BoolFlag{
-			Name:   "coupling",
-			Usage:  "Include change coupling pairs in the JSON envelope (requires --json)",
+			Name:   "no-coupling",
+			Usage:  "Omit change coupling pairs from the JSON envelope (on by default for JSON output)",
 			Hidden: hidden,
 		},
 	}
@@ -230,11 +230,10 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 	if err := output.ValidateFormat(format); err != nil {
 		return err
 	}
-	// Pair-centric data has no rendering in the file-centric table/csv; a
-	// silently ignored flag would be worse than an error.
-	if cmd.Bool("coupling") && format != "json" {
-		return fmt.Errorf("--coupling requires JSON output (use --json or --output json)")
-	}
+	// Coupling is on by default but only for JSON: pair-centric data has no
+	// rendering in the file-centric table/csv, so those formats skip the
+	// extraction entirely rather than pay for data they never show.
+	coupling := format == "json" && !cmd.Bool("no-coupling")
 
 	var filesFrom []string
 	if src := cmd.String("files-from"); src != "" {
@@ -251,7 +250,7 @@ func runAnalyze(ctx context.Context, cmd *cli.Command) error {
 		Decay:     !cmd.Bool("no-decay"),
 		NoMinAge:  cmd.Bool("no-min-age"),
 		FilesFrom: filesFrom,
-		Coupling:  cmd.Bool("coupling"),
+		Coupling:  coupling,
 	}
 
 	result, err := app.Analyze(ctx, opts)
