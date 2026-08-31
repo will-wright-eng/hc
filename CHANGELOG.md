@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/will-wright-eng/hc/compare/v1.3.0...v1.4.0) (2026-08-31)
+
+
+### Features
+
+* change coupling analysis with PR partner annotations ([#51](https://github.com/will-wright-eng/hc/issues/51)) ([ca89fdd](https://github.com/will-wright-eng/hc/commit/ca89fddf09045a04fc712c950e0423aa97c4fac0))
+
 ## [1.3.0](https://github.com/will-wright-eng/hc/compare/v1.2.1...v1.3.0) (2026-06-14)
 
 ### Features
