@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/will-wright-eng/hc/compare/v1.4.0...v1.4.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **annotate:** group co-change partner notices and floor the rendered direction ([#54](https://github.com/will-wright-eng/hc/issues/54)) ([095855f](https://github.com/will-wright-eng/hc/commit/095855fdf12f779d4f10783aaa6daa7c3cdc2d24))
+
 ## [1.4.0](https://github.com/will-wright-eng/hc/compare/v1.3.0...v1.4.0) (2026-08-31)
 
 
