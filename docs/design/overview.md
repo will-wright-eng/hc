@@ -170,7 +170,7 @@ sort by quadrant priority (HotCritical first), then by weighted commits
 - Fixed noise floors — raw support ≥ 5 and max directional confidence ≥ 0.5 — a deliberate departure from median-split (pair frequencies are power-law distributed)
 - Commits listed in `.git-blame-ignore-revs` at the repo root are skipped for pair extraction (churn is unaffected) — the standard structure git/GitHub honor for blame noise
 - Emitted only in the JSON envelope (`coupling` section, additive to schema v1); table/csv never compute or render it, so `--no-coupling` is a no-op there
-- `hc annotate` consumes the section to emit "missing co-change partner" notices when a PR touches exactly one side of a pair
+- `hc annotate` consumes the section to emit "missing co-change partner" notices: one per changed file, listing every absent partner whose changed-side→partner confidence clears the envelope's `min_confidence` (fallback 0.5 when the field is absent) — the pair floor is `max()` of both directions, so the directional check happens at render time
 - See [proposals/012-change-coupling.md](../proposals/012-change-coupling.md)
 
 ---
