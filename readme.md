@@ -107,4 +107,7 @@ hc md ignore | claude -p > .hcignore
 
 ## License
 
-[GNU General Public License v3.0](LICENSE).
+Copyright (C) 2026 Will Wright
+
+Licensed under the GNU General Public License, version 3 or (at your option) any
+later version. See [LICENSE](LICENSE).
