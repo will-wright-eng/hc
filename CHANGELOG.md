@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/will-wright-eng/hc/compare/v1.4.1...v1.4.2) (2026-09-25)
+
+
+### Documentation
+
+* state GPL-3.0-or-later grant in readme ([a8d76db](https://github.com/will-wright-eng/hc/commit/a8d76dbb246d9571c29548fe147dce060597d8e4))
+
 ## [1.4.1](https://github.com/will-wright-eng/hc/compare/v1.4.0...v1.4.1) (2026-08-31)
 
 
