@@ -7,6 +7,8 @@ Hot/Cold codebase analysis — finds hotspots by combining git churn with file c
 ## Install
 
 ```sh
+brew install will-wright-eng/tap/hc
+# or, with Go:
 go install github.com/will-wright-eng/hc/cmd/hc@latest
 ```
 
